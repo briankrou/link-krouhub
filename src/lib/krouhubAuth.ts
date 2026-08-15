@@ -20,21 +20,34 @@ export interface VerificationResult {
   error?: string;
 }
 
+const isProduction =
+  process.env.NODE_ENV === 'production' ||
+  Boolean(process.env.VERCEL) ||
+  process.env.VERCEL_ENV === 'production';
+
 export function getKrouhubBaseUrl(): string {
-  if (
-    process.env.NODE_ENV === 'production' ||
-    process.env.VERCEL ||
-    process.env.VERCEL_ENV === 'production'
-  ) {
+  if (isProduction) {
     return 'https://krouhub.com';
   }
   return process.env.NEXT_PUBLIC_KROUHUB_URL || 'http://localhost:3000';
 }
 
+export function getJwksUrl(): string {
+  const envJwks = process.env.KROUHUB_JWKS_URL;
+  if (envJwks) {
+    if (isProduction && envJwks.includes('localhost')) {
+      console.warn('[KrouHub Auth] ⚠️ KROUHUB_JWKS_URL contiene localhost en producción. Usando https://krouhub.com/.well-known/jwks.json');
+      return 'https://krouhub.com/.well-known/jwks.json';
+    }
+    return envJwks;
+  }
+  return `${getKrouhubBaseUrl()}/.well-known/jwks.json`;
+}
+
 const KROUHUB_URL = getKrouhubBaseUrl();
-const JWKS_URL = process.env.KROUHUB_JWKS_URL || `${KROUHUB_URL}/.well-known/jwks.json`;
+const JWKS_URL = getJwksUrl();
 const TOOL_SLUG = process.env.TOOL_SLUG || 'link';
-const ENABLE_MOCK = process.env.ENABLE_LOCAL_AUTH_MOCK === 'true';
+const ENABLE_MOCK = !isProduction && process.env.ENABLE_LOCAL_AUTH_MOCK === 'true';
 
 let jwksClient: ReturnType<typeof createRemoteJWKSet> | null = null;
 
