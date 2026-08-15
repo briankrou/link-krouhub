@@ -7,12 +7,7 @@ export default function Home() {
   const { user, isAuthenticated, isLoading, error, token, loginMock, logout, krouhubUrl } =
     useAuth();
 
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      console.log('[App] 🔒 No se detectó sesión activa. Redirigiendo automáticamente a login:', `${krouhubUrl}/login`);
-      window.location.href = `${krouhubUrl}/login`;
-    }
-  }, [isLoading, isAuthenticated, krouhubUrl]);
+
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 max-w-5xl mx-auto w-full">
@@ -129,7 +124,7 @@ export default function Home() {
 
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
               <a
-                href={`${krouhubUrl}/login`}
+                href={`${krouhubUrl}/login?redirect=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2"
