@@ -45,6 +45,25 @@ export default function AdminConsolePage() {
   const [isTesting, setIsTesting] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<any | null>(null);
 
+  // Config Verifier State
+  const [configResult, setConfigResult] = useState<any | null>(null);
+  const [isCheckingConfig, setIsCheckingConfig] = useState<boolean>(false);
+
+  const runConfigCheck = async (env: 'production' | 'local' = 'production') => {
+    setIsCheckingConfig(true);
+    try {
+      const res = await fetch(`/api/admin/config?env=${env}`);
+      if (res.ok) {
+        const data = await res.json();
+        setConfigResult(data);
+      }
+    } catch (err) {
+      console.error('Error al verificar configuración:', err);
+    } finally {
+      setIsCheckingConfig(false);
+    }
+  };
+
   const fetchLogs = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/logs');
@@ -100,6 +119,7 @@ export default function AdminConsolePage() {
 
   useEffect(() => {
     fetchLogs();
+    runConfigCheck('production');
   }, [fetchLogs]);
 
   useEffect(() => {
@@ -191,6 +211,136 @@ export default function AdminConsolePage() {
             <p className="text-2xl font-black text-indigo-300 mt-1">{stats.avgDurationMs} ms</p>
             <span className="text-[10px] text-indigo-400/70 font-mono">Tiempo de verificación</span>
           </div>
+        </div>
+
+        {/* Verificador y Diagnosticador de Configuración de Entornos */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <span>⚙️</span> Diagnóstico de Configuración de Entornos
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Verifica la alineación de variables, conectividad JWKS y endpoints de KrouHub en Producción y Local
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => runConfigCheck('production')}
+                disabled={isCheckingConfig}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md transition cursor-pointer flex items-center gap-1.5"
+              >
+                <span>🌐</span>
+                {isCheckingConfig ? 'Verificando...' : 'Verificar Producción (krouhub.com)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => runConfigCheck('local')}
+                disabled={isCheckingConfig}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+              >
+                <span>💻</span>
+                {isCheckingConfig ? 'Verificando...' : 'Verificar Local'}
+              </button>
+            </div>
+          </div>
+
+          {configResult && (
+            <div className="space-y-3 bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 font-bold uppercase rounded text-[10px] ${
+                    configResult.environment === 'production' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                  }`}>
+                    Entorno Evaluado: {configResult.environment}
+                  </span>
+                  <span className="text-slate-400 font-mono">Target: {configResult.targetKrouhubUrl}</span>
+                </div>
+
+                <div className="flex items-center gap-2 font-mono text-[11px]">
+                  <span className="text-emerald-400 font-bold">✓ {configResult.summary.passed} Correctos</span>
+                  <span className="text-amber-400 font-bold">⚠️ {configResult.summary.warnings} Advertencias</span>
+                  <span className="text-rose-400 font-bold">❌ {configResult.summary.errors} Errores</span>
+                </div>
+              </div>
+
+              {/* Grid de Estado */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Panel 1: Endpoints HTTP Remotos */}
+                <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 space-y-2">
+                  <span className="font-semibold text-slate-300 block text-xs">🌐 Conectividad con KrouHub Central:</span>
+                  
+                  <div className="space-y-1 font-mono text-[11px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Endpoint JWKS Remoto:</span>
+                      {configResult.jwksRemoteTest.reachable ? (
+                        <span className="text-emerald-400 font-bold">✅ ALCANZABLE (HTTP {configResult.jwksRemoteTest.statusCode})</span>
+                      ) : (
+                        <span className="text-rose-400 font-bold">❌ FALLO ({configResult.jwksRemoteTest.error || 'Sin conexión'})</span>
+                      )}
+                    </div>
+                    {configResult.jwksRemoteTest.keyId && (
+                      <div className="text-[10px] text-slate-400 pl-2">
+                        Key ID (kid): <span className="text-cyan-300">{configResult.jwksRemoteTest.keyId}</span> | Alg: <span className="text-cyan-300">{configResult.jwksRemoteTest.algorithm}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center pt-1 border-t border-slate-800/40">
+                      <span className="text-slate-400">Endpoint Online Verify:</span>
+                      {configResult.verifyRemoteTest.reachable ? (
+                        <span className="text-emerald-400 font-bold">✅ ALCANZABLE (HTTP {configResult.verifyRemoteTest.statusCode})</span>
+                      ) : (
+                        <span className="text-rose-400 font-bold">❌ FALLO ({configResult.verifyRemoteTest.error || 'Sin conexión'})</span>
+                      )}
+                    </div>
+                    {configResult.verifyRemoteTest.hasCors && (
+                      <div className="text-[10px] text-emerald-400/80 pl-2">
+                        ✓ Cabeceras CORS activas en servidor central
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Panel 2: Variables y Llaves Criptográficas */}
+                <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 space-y-2">
+                  <span className="font-semibold text-slate-300 block text-xs">🔑 Banderas y Llaves Criptográficas:</span>
+                  
+                  <div className="space-y-1 font-mono text-[11px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Modo Auth MOCK:</span>
+                      {configResult.environment === 'production' && configResult.mockEnabled ? (
+                        <span className="text-rose-400 font-bold">❌ ERROR (Activo en Prod)</span>
+                      ) : configResult.mockEnabled ? (
+                        <span className="text-emerald-400 font-bold">✓ Habilitado (Local)</span>
+                      ) : (
+                        <span className="text-emerald-400 font-bold">✓ Desactivado (Seguro)</span>
+                      )}
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">JWKS_KEY_ID:</span>
+                      {configResult.securityStatus.hasJwksKeyId ? (
+                        <span className="text-emerald-400 font-bold">✓ Configurado</span>
+                      ) : (
+                        <span className="text-amber-400 font-bold">⚠️ No definido</span>
+                      )}
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Clave Pública SPKI Base64:</span>
+                      {configResult.securityStatus.hasValidPublicKey ? (
+                        <span className="text-emerald-400 font-bold">✓ RSA Válida</span>
+                      ) : (
+                        <span className="text-amber-400 font-bold">⚠️ No detectada / formato</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Probador / Diagnosticador de Tokens */}
