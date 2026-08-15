@@ -3,7 +3,8 @@
 import { useAuth } from '@/context/AuthContext';
 
 export default function Home() {
-  const { user, isAuthenticated, isLoading, token, loginMock, logout, krouhubUrl } = useAuth();
+  const { user, isAuthenticated, isLoading, error, token, loginMock, logout, krouhubUrl } =
+    useAuth();
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 max-w-5xl mx-auto w-full">
@@ -23,13 +24,21 @@ export default function Home() {
 
       {/* Estado de la Sesión */}
       <div className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl p-6 md:p-8 backdrop-blur-xl shadow-xl">
-        <h2 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2">
-          <span>🛡️</span> Estado de Autenticación
+        <h2 className="text-lg font-bold text-slate-200 mb-4 flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <span>🛡️</span> Estado de Autenticación
+          </span>
+          {isAuthenticated && (
+            <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">
+              ● Sesión Activa
+            </span>
+          )}
         </h2>
 
         {isLoading ? (
-          <div className="py-8 text-center text-slate-400 animate-pulse">
-            Verificando credenciales con KrouHub...
+          <div className="py-8 text-center text-slate-400 animate-pulse flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <span>Verificando credenciales con KrouHub...</span>
           </div>
         ) : isAuthenticated && user ? (
           <div className="space-y-6">
@@ -80,9 +89,9 @@ export default function Home() {
             {token && (
               <div>
                 <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Token Activo (Guardado en Cookie `krouhub_token` / LocalStorage):
+                  Token JWT Activo:
                 </h4>
-                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 break-all select-all">
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 break-all select-all max-h-32 overflow-y-auto">
                   {token}
                 </div>
               </div>
@@ -90,11 +99,21 @@ export default function Home() {
           </div>
         ) : (
           <div className="py-6 text-center space-y-4">
+            {error && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-xl text-left max-w-md mx-auto mb-4 flex items-start gap-2">
+                <span className="text-base">⚠️</span>
+                <div>
+                  <strong className="font-semibold block mb-0.5">Aviso de Sesión:</strong>
+                  {error}
+                </div>
+              </div>
+            )}
+
             <div className="w-16 h-16 rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center mx-auto text-2xl">
               🔒
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">No estás autenticado</h3>
+              <h3 className="text-base font-bold text-white">Sesión no iniciada o expirada</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
                 Para acceder a las funciones del acortador y creador de UTMs, debes iniciar sesión con tu cuenta de KrouHub.
               </p>
@@ -114,7 +133,7 @@ export default function Home() {
               </a>
 
               <button
-                onClick={() => loginMock('CLIENT')}
+                onClick={() => loginMock('ADMIN')}
                 className="w-full sm:w-auto px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold transition"
               >
                 🧪 Probar con Usuario Demo (Local)
@@ -138,7 +157,7 @@ export default function Home() {
           <div className="text-xl mb-2">🌐</div>
           <h3 className="text-sm font-bold text-slate-200">Compatibilidad Local & Prod</h3>
           <p className="text-xs text-slate-400 mt-1">
-            Funciona dinámicamente tanto con `localhost:3000` como en producción con `krouhub.com`.
+            Funciona dinámicamente tanto con `localhost:3001` como en producción con `krouhub.com`.
           </p>
         </div>
 
