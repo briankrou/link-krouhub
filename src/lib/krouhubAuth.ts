@@ -48,8 +48,10 @@ export function getJwksUrl(): string {
 
 const KROUHUB_URL = getKrouhubBaseUrl();
 const JWKS_URL = getJwksUrl();
-const TOOL_SLUG = process.env.TOOL_SLUG || 'link';
-const ENABLE_MOCK = !isProduction && process.env.ENABLE_LOCAL_AUTH_MOCK === 'true';
+const TOOL_SLUG = process.env.TOOL_SLUG || (process.env as any).HERRAMIENTA_SLUG || 'link';
+const ENABLE_MOCK =
+  process.env.ENABLE_LOCAL_AUTH_MOCK === 'true' ||
+  (process.env as any).PERMITIR_MOCK_LOCAL === 'true';
 
 let jwksClient: ReturnType<typeof createRemoteJWKSet> | null = null;
 
@@ -153,6 +155,26 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
   }
 
   // 2. Comprobar estructura primaria y expiración inicial
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    let detail = `Recibida(s) ${parts.length} parte(s).`;
+    if (parts.length === 1) {
+      detail += ' Parece que solo pegaste la Cabecera (Header) del JWT.';
+    }
+    const error = `El formato del token JWT es inválido. Un JWT debe tener 3 partes separadas por puntos (Header.Payload.Firma). ${detail}`;
+    stepsLogs.push(`❌ ${error}`);
+    addAuthLog({
+      tokenSnippet,
+      method: 'INVALID_FORMAT',
+      valid: false,
+      toolSlug: TOOL_SLUG,
+      error,
+      durationMs: Date.now() - startTime,
+      logs: stepsLogs,
+    });
+    return { valid: false, error, logs: stepsLogs };
+  }
+
   let decodedPayload: KrouHubUserPayload | null = null;
   try {
     decodedPayload = decodeJwt(token) as KrouHubUserPayload;
