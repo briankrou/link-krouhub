@@ -20,7 +20,9 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const krouhubUrl = process.env.NEXT_PUBLIC_KROUHUB_URL || 'http://localhost:3001';
+  const krouhubUrl =
+    process.env.NEXT_PUBLIC_KROUHUB_URL ||
+    (process.env.NODE_ENV === 'production' ? 'https://krouhub.com' : 'http://localhost:3001');
 
   useEffect(() => {
     async function initAuth() {

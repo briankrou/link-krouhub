@@ -1,6 +1,8 @@
 import { createRemoteJWKSet, jwtVerify, decodeJwt } from 'jose';
 
-const KROUHUB_URL = process.env.NEXT_PUBLIC_KROUHUB_URL || 'http://localhost:3001';
+const KROUHUB_URL =
+  process.env.NEXT_PUBLIC_KROUHUB_URL ||
+  (process.env.NODE_ENV === 'production' ? 'https://krouhub.com' : 'http://localhost:3001');
 const JWKS_URL = process.env.KROUHUB_JWKS_URL || `${KROUHUB_URL}/.well-known/jwks.json`;
 const TOOL_SLUG = process.env.TOOL_SLUG || 'link';
 const ENABLE_MOCK = process.env.ENABLE_LOCAL_AUTH_MOCK === 'true';
