@@ -11,7 +11,7 @@ const AuthContext = createContext({
   loginWithToken: () => {},
   loginMock: () => {},
   logout: () => {},
-  krouhubUrl: '',
+  krouhubUrl: 'https://krouhub.com',
 });
 
 export function AuthProvider({ children }) {
@@ -19,10 +19,19 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [krouhubUrl, setKrouhubUrl] = useState('https://krouhub.com');
 
-  const krouhubUrl =
-    process.env.NEXT_PUBLIC_KROUHUB_URL ||
-    (process.env.NODE_ENV === 'production' ? 'https://krouhub.com' : 'http://localhost:3001');
+  // Detectar dinámicamente si estamos en producción (krouhub.com / vercel.app) o desarrollo (localhost / IP local)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname;
+      if (host.endsWith('krouhub.com') || host.endsWith('vercel.app') || process.env.NODE_ENV === 'production') {
+        setKrouhubUrl('https://krouhub.com');
+      } else {
+        setKrouhubUrl(process.env.NEXT_PUBLIC_KROUHUB_URL || 'http://localhost:3001');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     async function initAuth() {
