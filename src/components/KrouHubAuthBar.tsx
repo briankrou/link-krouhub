@@ -1,16 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function KrouHubAuthBar() {
-  const { user, isAuthenticated, isLoading, logout, loginWithToken, loginMock, krouhubUrl, error } =
+  const { user, isAuthenticated, isLoading, logout, loginWithToken, loginMock, krouhubUrl } =
     useAuth();
-  const [showModal, setShowModal] = useState(false);
-  const [customToken, setCustomToken] = useState('');
-  const [inputError, setInputError] = useState('');
+  const [showModal, setShowModal] = useState<boolean>(false);
+  const [customToken, setCustomToken] = useState<string>('');
+  const [inputError, setInputError] = useState<string>('');
 
-  const handleCustomTokenSubmit = async (e) => {
+  const handleCustomTokenSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!customToken.trim()) return;
 
@@ -24,7 +24,7 @@ export default function KrouHubAuthBar() {
     }
   };
 
-  const handleMockLogin = async (role) => {
+  const handleMockLogin = async (role: 'ADMIN' | 'CLIENT') => {
     setInputError('');
     const res = await loginMock(role);
     if (res.success) {
@@ -44,34 +44,42 @@ export default function KrouHubAuthBar() {
 
         <span className="text-slate-600">|</span>
 
-        {isLoading ? (
-          <span className="text-slate-400 animate-pulse flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
-            Verificando sesión...
-          </span>
-        ) : isAuthenticated && user ? (
-          <div className="flex items-center space-x-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
-            <span className="text-slate-300">
-              Conectado como <strong className="text-indigo-300 font-medium">{user.name || user.email}</strong>
-            </span>
-            <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-              {user.role}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center space-x-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-            <span className="text-slate-400">Sin sesión activa</span>
-          </div>
-        )}
+        {(() => {
+          if (isLoading) {
+            return (
+              <span className="text-slate-400 animate-pulse flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
+                Verificando sesión...
+              </span>
+            );
+          }
+          if (isAuthenticated && user) {
+            return (
+              <div className="flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
+                <span className="text-slate-300">
+                  Conectado como <strong className="text-indigo-300 font-medium">{user.name || user.email}</strong>
+                </span>
+                <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  {user.role}
+                </span>
+              </div>
+            );
+          }
+          return (
+            <div className="flex items-center space-x-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+              <span className="text-slate-400">Sin sesión activa</span>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="flex items-center space-x-2">
         {isAuthenticated ? (
           <button
             onClick={logout}
-            className="px-3 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+            className="px-3 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer"
           >
             Cerrar Sesión
           </button>
@@ -91,7 +99,7 @@ export default function KrouHubAuthBar() {
 
             <button
               onClick={() => setShowModal(true)}
-              className="px-3 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 transition"
+              className="px-3 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 transition cursor-pointer"
             >
               Token / Dev Mock
             </button>
@@ -109,7 +117,7 @@ export default function KrouHubAuthBar() {
               </h3>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
+                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
               >
                 ×
               </button>
@@ -132,7 +140,7 @@ export default function KrouHubAuthBar() {
               {inputError && <p className="text-xs text-rose-400 mb-2">{inputError}</p>}
               <button
                 type="submit"
-                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition"
+                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition cursor-pointer"
               >
                 Validar Token JWT
               </button>
@@ -145,13 +153,13 @@ export default function KrouHubAuthBar() {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => handleMockLogin('CLIENT')}
-                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs transition font-medium"
+                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs transition font-medium cursor-pointer"
                 >
                   👤 Login como Cliente
                 </button>
                 <button
                   onClick={() => handleMockLogin('ADMIN')}
-                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs transition font-medium"
+                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs transition font-medium cursor-pointer"
                 >
                   ⚡ Login como Admin
                 </button>

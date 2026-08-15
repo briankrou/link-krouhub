@@ -1,10 +1,18 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function Home() {
   const { user, isAuthenticated, isLoading, error, token, loginMock, logout, krouhubUrl } =
     useAuth();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      console.log('[App] 🔒 No se detectó sesión activa. Redirigiendo automáticamente a login:', `${krouhubUrl}/login`);
+      window.location.href = `${krouhubUrl}/login`;
+    }
+  }, [isLoading, isAuthenticated, krouhubUrl]);
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 max-w-5xl mx-auto w-full">
@@ -62,7 +70,7 @@ export default function Home() {
 
               <button
                 onClick={logout}
-                className="px-4 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-rose-500/20 transition self-end sm:self-center"
+                className="px-4 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-rose-500/20 transition self-end sm:self-center cursor-pointer"
               >
                 Cerrar Sesión
               </button>
@@ -74,7 +82,7 @@ export default function Home() {
                 Herramientas Autorizadas (`allowed_tools`):
               </h4>
               <div className="flex flex-wrap gap-2">
-                {user.allowedTools?.map((toolSlug, idx) => (
+                {user.allowedTools?.map((toolSlug: string, idx: number) => (
                   <span
                     key={idx}
                     className="px-2.5 py-1 text-xs rounded-md bg-slate-800 text-indigo-300 border border-slate-700 font-mono"
@@ -134,7 +142,7 @@ export default function Home() {
 
               <button
                 onClick={() => loginMock('ADMIN')}
-                className="w-full sm:w-auto px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold transition"
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
               >
                 🧪 Probar con Usuario Demo (Local)
               </button>
@@ -163,7 +171,7 @@ export default function Home() {
 
         <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4">
           <div className="text-xl mb-2">🛡️</div>
-          <h3 className="text-sm font-bold text-slate-200">Next.js Middleware</h3>
+          <h3 className="text-sm font-bold text-slate-200">Next.js Proxy / Middleware</h3>
           <p className="text-xs text-slate-400 mt-1">
             Protección de rutas de API y vistas interceptando cabeceras `Authorization: Bearer` y cookies.
           </p>
