@@ -102,8 +102,25 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
     return { valid: false, error, logs: stepsLogs };
   }
 
-  // 1. Soporte exclusivo para Tokens de Prueba en Desarrollo Local (mock_demo_token_*)
-  if (ENABLE_MOCK && token.startsWith('mock_demo_token_')) {
+  // 1. Soporte para Tokens de Prueba en Desarrollo Local (mock_demo_token_*)
+  if (token.startsWith('mock_demo_token_')) {
+    const isMockAllowed = !isProduction || process.env.ENABLE_LOCAL_AUTH_MOCK === 'true';
+
+    if (!isMockAllowed) {
+      const error = 'Los tokens mock de desarrollo están deshabilitados en entorno de producción.';
+      stepsLogs.push(`❌ ${error}`);
+      addAuthLog({
+        tokenSnippet,
+        method: 'LOCAL_MOCK',
+        valid: false,
+        toolSlug: TOOL_SLUG,
+        error,
+        durationMs: Date.now() - startTime,
+        logs: stepsLogs,
+      });
+      return { valid: false, error, logs: stepsLogs };
+    }
+
     const isClient = token.includes('client');
     const mockPayload: KrouHubUserPayload = {
       sub: 'usr_local_dev_123',
