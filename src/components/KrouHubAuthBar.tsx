@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 
 export default function KrouHubAuthBar() {
@@ -76,6 +77,13 @@ export default function KrouHubAuthBar() {
       </div>
 
       <div className="flex items-center space-x-2">
+        <Link
+          href="/admin"
+          className="px-2.5 py-1 text-xs rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 transition flex items-center gap-1 cursor-pointer font-medium"
+        >
+          <span>🛠️ Consola Admin</span>
+        </Link>
+
         {isAuthenticated ? (
           <button
             onClick={logout}

@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify, decodeJwt, JWTPayload } from 'jose';
+import { addAuthLog } from '@/lib/authLogs';
 
 export interface KrouHubUserPayload extends JWTPayload {
   sub: string;
@@ -18,6 +19,7 @@ export interface VerificationResult {
   valid: boolean;
   payload?: KrouHubUserPayload;
   error?: string;
+  logs?: string[];
 }
 
 const isProduction =
@@ -79,47 +81,82 @@ function withTimeout<T>(promise: Promise<T>, ms = 3500): Promise<T> {
  * No realiza fallbacks desatendidos de tokens no verificados.
  */
 export async function verifyKrouHubToken(token: string | null | undefined): Promise<VerificationResult> {
-  console.log('[KrouHub Auth] 📥 INPUT TOKEN (primeros 30 caracteres):', token ? `${token.substring(0, 30)}...` : 'null');
+  const startTime = Date.now();
+  const tokenSnippet = token ? `${token.substring(0, 25)}...` : 'null';
+  const stepsLogs: string[] = [];
+
+  stepsLogs.push(`[${new Date().toLocaleTimeString()}] 📥 Token recibido (${tokenSnippet})`);
 
   if (!token) {
-    console.log('[KrouHub Auth] ❌ RESULTADO: Token no proporcionado');
-    return { valid: false, error: 'Token no proporcionado' };
+    const error = 'Token no proporcionado';
+    stepsLogs.push(`❌ ${error}`);
+    addAuthLog({
+      tokenSnippet,
+      method: 'INVALID_FORMAT',
+      valid: false,
+      error,
+      durationMs: Date.now() - startTime,
+      toolSlug: TOOL_SLUG,
+      logs: stepsLogs,
+    });
+    return { valid: false, error, logs: stepsLogs };
   }
 
   // 1. Soporte exclusivo para Tokens de Prueba en Desarrollo Local (mock_demo_token_*)
   if (ENABLE_MOCK && token.startsWith('mock_demo_token_')) {
     const isClient = token.includes('client');
-    const mockResult: VerificationResult = {
-      valid: true,
-      payload: {
-        sub: 'usr_local_dev_123',
-        email: isClient ? 'cliente.demo@krouhub.com' : 'admin.dev@krouhub.com',
-        name: isClient ? 'Cliente Agencia Demo' : 'Brian Krou (Dev)',
-        role: isClient ? 'CLIENT' : 'ADMIN',
-        tool: TOOL_SLUG,
-        allowed_tools: [TOOL_SLUG, 'seo-audit', 'calculator-pro'],
-        iss: KROUHUB_URL,
-        aud: 'krouhub-tools',
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 86400,
-        jti: 'mock-jti-' + Date.now(),
-      },
+    const mockPayload: KrouHubUserPayload = {
+      sub: 'usr_local_dev_123',
+      email: isClient ? 'cliente.demo@krouhub.com' : 'admin.dev@krouhub.com',
+      name: isClient ? 'Cliente Agencia Demo' : 'Brian Krou (Dev)',
+      role: isClient ? 'CLIENT' : 'ADMIN',
+      tool: TOOL_SLUG,
+      allowed_tools: [TOOL_SLUG, 'seo-audit', 'calculator-pro'],
+      iss: KROUHUB_URL,
+      aud: 'krouhub-tools',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 86400,
+      jti: 'mock-jti-' + Date.now(),
     };
-    console.log('[KrouHub Auth] ✅ RESULTADO (Mock Local):', mockResult.payload?.email);
-    return mockResult;
+
+    stepsLogs.push(`✅ Autenticado vía Local Auth Mock (${mockPayload.email})`);
+    addAuthLog({
+      tokenSnippet,
+      method: 'LOCAL_MOCK',
+      valid: true,
+      userEmail: mockPayload.email,
+      userRole: mockPayload.role,
+      toolSlug: TOOL_SLUG,
+      durationMs: Date.now() - startTime,
+      payload: mockPayload,
+      logs: stepsLogs,
+    });
+
+    return { valid: true, payload: mockPayload, logs: stepsLogs };
   }
 
   // 2. Comprobar estructura primaria y expiración inicial
   let decodedPayload: KrouHubUserPayload | null = null;
   try {
     decodedPayload = decodeJwt(token) as KrouHubUserPayload;
+    stepsLogs.push(`🔍 JWT descodificado. Claims: sub=${decodedPayload.sub}, email=${decodedPayload.email}, role=${decodedPayload.role}`);
 
     if (decodedPayload.exp && decodedPayload.exp * 1000 < Date.now()) {
-      console.log('[KrouHub Auth] ❌ RESULTADO: Token expirado (exp:', decodedPayload.exp, ')');
-      return {
+      const error = 'El token de sesión de KrouHub ha expirado (TTL 15 min). Por favor inicia sesión nuevamente.';
+      stepsLogs.push(`❌ ${error} (exp: ${new Date(decodedPayload.exp * 1000).toISOString()})`);
+      addAuthLog({
+        tokenSnippet,
+        method: 'EXPIRED',
         valid: false,
-        error: 'El token de sesión de KrouHub ha expirado (TTL 15 min). Por favor inicia sesión nuevamente.',
-      };
+        userEmail: decodedPayload.email,
+        userRole: decodedPayload.role,
+        toolSlug: TOOL_SLUG,
+        error,
+        durationMs: Date.now() - startTime,
+        payload: decodedPayload,
+        logs: stepsLogs,
+      });
+      return { valid: false, error, logs: stepsLogs };
     }
 
     const allowed =
@@ -128,23 +165,42 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
         decodedPayload.allowed_tools.includes(TOOL_SLUG));
 
     if (!allowed) {
-      console.log('[KrouHub Auth] ❌ RESULTADO: Herramienta no autorizada ("' + TOOL_SLUG + '")');
-      return {
+      const error = `El token no autoriza el acceso a la herramienta "${TOOL_SLUG}".`;
+      stepsLogs.push(`❌ ${error}`);
+      addAuthLog({
+        tokenSnippet,
+        method: 'UNAUTHORIZED_TOOL',
         valid: false,
-        error: `El token no autoriza el acceso a la herramienta "${TOOL_SLUG}".`,
-      };
+        userEmail: decodedPayload.email,
+        userRole: decodedPayload.role,
+        toolSlug: TOOL_SLUG,
+        error,
+        durationMs: Date.now() - startTime,
+        payload: decodedPayload,
+        logs: stepsLogs,
+      });
+      return { valid: false, error, logs: stepsLogs };
     }
   } catch (decodeErr) {
-    console.log('[KrouHub Auth] ❌ RESULTADO: Formato JWT inválido');
-    return { valid: false, error: 'El formato del token JWT es inválido.' };
+    const error = 'El formato del token JWT es inválido.';
+    stepsLogs.push(`❌ ${error}`);
+    addAuthLog({
+      tokenSnippet,
+      method: 'INVALID_FORMAT',
+      valid: false,
+      toolSlug: TOOL_SLUG,
+      error,
+      durationMs: Date.now() - startTime,
+      logs: stepsLogs,
+    });
+    return { valid: false, error, logs: stepsLogs };
   }
 
   // 3. VERIFICACIÓN EN TIEMPO REAL VÍA ENDPOINT CENTRAL KROUHUB (/api/v1/tools/verify)
-  // Consulta directamente a KrouHub para revocar al instante en caso de logout o token inválido
   try {
     const currentBaseUrl = getKrouhubBaseUrl();
     const verifyEndpoint = `${currentBaseUrl}/api/v1/tools/verify`;
-    console.log(`[KrouHub Auth] 🔄 Consultando en tiempo real a KrouHub (${verifyEndpoint})...`);
+    stepsLogs.push(`🔄 Verificando en tiempo real con KrouHub central (${verifyEndpoint})...`);
 
     const res = await withTimeout(
       fetch(verifyEndpoint, {
@@ -159,21 +215,46 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
     if (res.ok) {
       const data = await res.json();
       if (data.valid && data.payload) {
-        console.log('[KrouHub Auth] ✅ RESULTADO (Verificado en Tiempo Real con KrouHub):', data.payload.email);
-        return { valid: true, payload: data.payload as KrouHubUserPayload };
+        stepsLogs.push(`✅ Verificación exitosa en tiempo real con KrouHub (${data.payload.email})`);
+        addAuthLog({
+          tokenSnippet,
+          method: 'ONLINE_KROUHUB',
+          valid: true,
+          userEmail: data.payload.email,
+          userRole: data.payload.role,
+          toolSlug: TOOL_SLUG,
+          durationMs: Date.now() - startTime,
+          payload: data.payload,
+          logs: stepsLogs,
+        });
+        return { valid: true, payload: data.payload as KrouHubUserPayload, logs: stepsLogs };
       } else {
-        console.log('[KrouHub Auth] ❌ RESULTADO (Rechazado por KrouHub):', data.error || 'Token no válido o revocado');
-        return { valid: false, error: data.error || 'Sesión no válida o revocada en KrouHub.' };
+        const error = data.error || 'Sesión no válida o revocada en KrouHub.';
+        stepsLogs.push(`❌ Token rechazado por KrouHub Central: ${error}`);
+        addAuthLog({
+          tokenSnippet,
+          method: 'ONLINE_KROUHUB',
+          valid: false,
+          userEmail: decodedPayload?.email,
+          userRole: decodedPayload?.role,
+          toolSlug: TOOL_SLUG,
+          error,
+          durationMs: Date.now() - startTime,
+          payload: decodedPayload,
+          logs: stepsLogs,
+        });
+        return { valid: false, error, logs: stepsLogs };
       }
     } else {
-      console.warn('[KrouHub Auth] Servidor KrouHub respondió con estatus HTTP:', res.status);
+      stepsLogs.push(`⚠️ KrouHub API respondió con estatus HTTP ${res.status}. Pasando a respaldo JWKS...`);
     }
   } catch (apiErr: any) {
-    console.warn('[KrouHub Auth] Error al conectar con endpoint de verificación en tiempo real de KrouHub:', apiErr?.message);
+    stepsLogs.push(`⚠️ No se pudo contactar a KrouHub API (${apiErr?.message}). Pasando a respaldo JWKS...`);
   }
 
   // 4. Intentar Verificación Criptográfica Asimétrica con JWKS como respaldo
   try {
+    stepsLogs.push(`🔐 Validando firma asimétrica RS256 con JWKS (${JWKS_URL})...`);
     const JWKS = getJwksClient();
     if (JWKS) {
       const { payload } = await withTimeout(
@@ -181,19 +262,56 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
         3500
       );
       const krouPayload = payload as KrouHubUserPayload;
-      console.log('[KrouHub Auth] ✅ RESULTADO (Verificación JWKS):', krouPayload.email, krouPayload.role);
-      return { valid: true, payload: krouPayload };
+      stepsLogs.push(`✅ Firma RS256 válida vía JWKS (${krouPayload.email})`);
+      addAuthLog({
+        tokenSnippet,
+        method: 'JWKS_OFFLINE',
+        valid: true,
+        userEmail: krouPayload.email,
+        userRole: krouPayload.role,
+        toolSlug: TOOL_SLUG,
+        durationMs: Date.now() - startTime,
+        payload: krouPayload,
+        logs: stepsLogs,
+      });
+      return { valid: true, payload: krouPayload, logs: stepsLogs };
     }
   } catch (jwksErr: any) {
-    console.warn('[KrouHub Auth] Verificación JWKS falló:', jwksErr?.message);
+    stepsLogs.push(`❌ Verificación JWKS falló: ${jwksErr?.message}`);
 
     if (jwksErr?.code === 'ERR_JWT_EXPIRED') {
-      console.log('[KrouHub Auth] ❌ RESULTADO: Expirado en JWKS');
-      return { valid: false, error: 'El token de sesión ha expirado.' };
+      const error = 'El token de sesión ha expirado.';
+      addAuthLog({
+        tokenSnippet,
+        method: 'EXPIRED',
+        valid: false,
+        userEmail: decodedPayload?.email,
+        userRole: decodedPayload?.role,
+        toolSlug: TOOL_SLUG,
+        error,
+        durationMs: Date.now() - startTime,
+        payload: decodedPayload,
+        logs: stepsLogs,
+      });
+      return { valid: false, error, logs: stepsLogs };
     }
   }
 
-  // Sin fallbacks no verificados: Si KrouHub o JWKS no confirmaron la firma o validez, denegar acceso.
-  console.log('[KrouHub Auth] ❌ RESULTADO: Firma/Validez no comprobada por KrouHub');
-  return { valid: false, error: 'No se pudo verificar la firma o validez del token con KrouHub.' };
+  const finalError = 'No se pudo verificar la firma o validez del token con KrouHub.';
+  stepsLogs.push(`❌ ${finalError}`);
+  addAuthLog({
+    tokenSnippet,
+    method: 'JWKS_OFFLINE',
+    valid: false,
+    userEmail: decodedPayload?.email,
+    userRole: decodedPayload?.role,
+    toolSlug: TOOL_SLUG,
+    error: finalError,
+    durationMs: Date.now() - startTime,
+    payload: decodedPayload,
+    logs: stepsLogs,
+  });
+
+  return { valid: false, error: finalError, logs: stepsLogs };
 }
+
