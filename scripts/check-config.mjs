@@ -131,7 +131,7 @@ async function checkProductionConfig(envVars) {
   const prodKrouhubUrl = 'https://krouhub.com';
   const prodJwksUrl = 'https://krouhub.com/.well-known/jwks.json';
   const prodVerifyUrl = 'https://krouhub.com/api/v1/tools/verify';
-  const toolSlug = envVars.TOOL_SLUG || 'link';
+  const toolSlug = envVars.TOOL_SLUG || 'enlaces';
   const isMockEnabled = envVars.ENABLE_LOCAL_AUTH_MOCK === 'true';
 
   let passCount = 0;
@@ -249,7 +249,7 @@ async function checkLocalConfig(envVars) {
 
   const localKrouhubUrl = envVars.NEXT_PUBLIC_KROUHUB_URL || 'http://localhost:3000';
   const localJwksUrl = envVars.KROUHUB_JWKS_URL || `${localKrouhubUrl}/.well-known/jwks.json`;
-  const toolSlug = envVars.TOOL_SLUG || 'link';
+  const toolSlug = envVars.TOOL_SLUG || 'enlaces';
   const isMockEnabled = envVars.ENABLE_LOCAL_AUTH_MOCK === 'true';
 
   let passCount = 0;

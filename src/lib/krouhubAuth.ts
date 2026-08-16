@@ -198,10 +198,15 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
       return { valid: false, error, logs: stepsLogs };
     }
 
+    const targetSlug = TOOL_SLUG;
     const allowed =
-      decodedPayload.tool === TOOL_SLUG ||
+      decodedPayload.tool === targetSlug ||
+      decodedPayload.tool === 'enlaces' ||
+      decodedPayload.tool === 'link' ||
       (Array.isArray(decodedPayload.allowed_tools) &&
-        decodedPayload.allowed_tools.includes(TOOL_SLUG));
+        (decodedPayload.allowed_tools.includes(targetSlug) ||
+         decodedPayload.allowed_tools.includes('enlaces') ||
+         decodedPayload.allowed_tools.includes('link')));
 
     if (!allowed) {
       const error = `El token no autoriza el acceso a la herramienta "${TOOL_SLUG}".`;
@@ -316,7 +321,15 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
       return { valid: true, payload: krouPayload, logs: stepsLogs };
     }
   } catch (jwksErr: any) {
-    stepsLogs.push(`❌ Verificación JWKS falló: ${jwksErr?.message}`);
+    if (jwksErr?.message?.includes('no applicable key found') || jwksErr?.code === 'ERR_JWKS_NO_MATCHING_KEY') {
+      const errorMsg = `La clave de firma (kid) del token no coincide con las llaves JWKS de KrouHub en ${JWKS_URL}. (Causa: Token generado en entorno distinto, ej. Local vs Producción).`;
+      stepsLogs.push(`❌ ${errorMsg}`);
+    } else if (jwksErr?.message?.includes('signature verification failed') || jwksErr?.code === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED') {
+      const errorMsg = `La firma asimétrica RS256 no coincide con la clave pública de KrouHub en ${JWKS_URL}. (Causa: Token firmado por la llave privada de un entorno distinto, ej. Local vs Producción).`;
+      stepsLogs.push(`❌ ${errorMsg}`);
+    } else {
+      stepsLogs.push(`❌ Verificación JWKS falló: ${jwksErr?.message}`);
+    }
 
     if (jwksErr?.code === 'ERR_JWT_EXPIRED') {
       const error = 'El token de sesión ha expirado.';
