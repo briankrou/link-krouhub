@@ -20,8 +20,11 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
-  const code = searchParams.get('code');
-  const state = searchParams.get('state');
+  const rawCode = searchParams.get('code');
+  const rawState = searchParams.get('state');
+
+  const code = rawCode ? rawCode.replace(/ /g, '+') : null;
+  const state = rawState ? rawState.replace(/ /g, '+') : null;
 
   if (!code) {
     return NextResponse.json(
