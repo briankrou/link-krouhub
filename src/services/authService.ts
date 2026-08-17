@@ -336,24 +336,9 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
     if (sessionCheck.valid) {
       isOnlineVerified = true;
       stepsLogs.push(`✅ Sesión confirmada activa por KrouHub Central.`);
-    } else if (sessionCheck.reason && sessionCheck.reason !== 'NETWORK_ERROR') {
-      const error = `Sesión no válida o revocada en KrouHub Central (${sessionCheck.reason}).`;
-      stepsLogs.push(`❌ Token rechazado por KrouHub Central: ${error}`);
-      addAuthLog({
-        tokenSnippet,
-        method: 'ONLINE_KROUHUB',
-        valid: false,
-        userEmail: decodedPayload?.email,
-        userRole: decodedPayload?.role,
-        toolSlug: TOOL_SLUG,
-        error,
-        durationMs: Date.now() - startTime,
-        payload: decodedPayload,
-        logs: stepsLogs,
-      });
-      return { valid: false, error, logs: stepsLogs };
     } else {
-      stepsLogs.push(`⚠️ Heartbeat retornó estado inválido sin causa conocida.`);
+      const reason = sessionCheck.reason || 'Estado inválido';
+      stepsLogs.push(`⚠️ Heartbeat falló en KrouHub Central (${reason}). Continuando con validación criptográfica JWKS RS256...`);
     }
   } catch (apiErr: any) {
     stepsLogs.push(`⚠️ No se pudo verificar la sesión en vivo (${apiErr?.message || 'Error de red'}). Continuando con validación JWKS RS256...`);
