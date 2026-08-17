@@ -30,6 +30,7 @@ export async function proxy(request: NextRequest) {
     const verification = await verifyKrouHubToken(token);
 
     if (!verification.valid || !verification.payload) {
+      console.warn(`[Proxy Middleware] ❌ Token de sesión no válido para la ruta: ${pathname}. Error: ${verification.error || 'Ninguno'}. Pasos:`, verification.logs);
       return NextResponse.json(
         { error: verification.error || 'Token de KrouHub no válido.' },
         { status: 401 }

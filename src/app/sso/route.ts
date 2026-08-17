@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         // Si la verificación estricta JWKS no respondió o falló por red,
         // pero el canje directo server-to-server fue exitoso y devolvió los datos,
         // confiamos en krouUser (fuente de verdad verificada bajo Basic Auth).
-        console.warn('[SSO Route] Verificación JWKS falló o está offline. Utilizando datos verificados de KrouHub central.');
+        console.warn(`[SSO Route] Verificación JWKS/Heartbeat falló (Error: ${verification.error || 'Ninguno'}). Detalle de pasos:`, verification.logs);
         verifiedPayload = krouUser;
       }
     } catch (verErr: any) {

@@ -37,13 +37,17 @@ export function getKrouhubClientSecret(): string {
 
 export function getKrouhubBaseUrl(): string {
   const envUrl = process.env.KROUHUB_BASE_URL || (process.env as any).NEXT_PUBLIC_KROUHUB_BASE_URL;
+  let url = '';
   if (isProduction) {
     if (!envUrl || envUrl.includes('localhost') || envUrl.includes('127.0.0.1')) {
-      return 'https://krouhub.com';
+      url = 'https://krouhub.com';
+    } else {
+      url = envUrl;
     }
-    return envUrl;
+  } else {
+    url = envUrl || 'http://localhost:3000';
   }
-  return envUrl || 'http://localhost:3000';
+  return url.replace(/\/+$/, '');
 }
 
 export function getJwksUrl(): string {
@@ -375,10 +379,25 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
     stepsLogs.push(`🔐 Validando firma asimétrica RS256 con JWKS (${JWKS_URL})...`);
     const JWKS = getJwksClient();
     if (JWKS) {
+      const possibleIssuers = Array.from(new Set([
+        getKrouhubBaseUrl(),
+        getKrouhubBaseUrl().replace(/\/+$/, ''),
+        getKrouhubBaseUrl().replace(/\/+$/, '') + '/',
+        'https://krouhub.com',
+        'https://krouhub.com/'
+      ]));
+
+      const possibleAudiences = Array.from(new Set([
+        TOOL_SLUG,
+        'enlaces',
+        'link',
+        'krouhub-tools'
+      ]));
+
       const { payload } = await withTimeout(
         jwtVerify(token, JWKS, {
-          issuer: getKrouhubBaseUrl(),
-          audience: TOOL_SLUG,
+          issuer: possibleIssuers,
+          audience: possibleAudiences,
           algorithms: ['RS256'],
         }),
         3500
