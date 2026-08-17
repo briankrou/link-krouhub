@@ -405,6 +405,7 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
           issuer: possibleIssuers,
           audience: possibleAudiences,
           algorithms: ['RS256'],
+          clockTolerance: 60,
         }),
         3500
       );

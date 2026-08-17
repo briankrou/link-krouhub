@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     // 2. Verificación del JWT (Sin bypass)
     const verification = await verifyKrouHubToken(token);
     if (!verification.valid || !verification.payload) {
-      console.error('[SSO Route Error] Verificación de token fallida:', verification.error);
+      console.error('[SSO Route Error] Verificación de token fallida:', verification.error, '\nDetalles de pasos:', verification.logs);
       return NextResponse.json(
         { error: `Fallo al verificar la firma del token: ${verification.error}` },
         { status: 401 }
