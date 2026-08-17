@@ -105,10 +105,13 @@ export async function exchangeAuthCode(code: string, state?: string | null) {
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
+    const errorMsg = errData.error || errData.message || `Fallo al canjear código (HTTP ${res.status})`;
+    console.error(`[KrouHub Auth Exchange Error] URL: ${baseUrl}/api/v1/tools/exchange | ClientId: "${clientId}" | SecretLength: ${clientSecret.length} | Status: ${res.status} | Error: ${errorMsg}`);
     return {
       success: false as const,
-      error: errData.error || `Fallo al canjear código (HTTP ${res.status})`,
+      error: `Error KrouHub Central (${baseUrl}): ${errorMsg} [client_id="${clientId}"]`,
       status: res.status,
+      detail: errData,
     };
   }
 

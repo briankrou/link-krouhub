@@ -9,6 +9,17 @@ import {
 } from '@/lib/krouhubAuth';
 
 export async function GET(request: NextRequest) {
+  // Prevenir que peticiones de prefetch/prerender del navegador consuman el código de un solo uso
+  const isPrefetch =
+    request.headers.get('purpose') === 'prefetch' ||
+    request.headers.get('x-purpose') === 'preview' ||
+    request.headers.get('sec-purpose') === 'prefetch' ||
+    request.headers.get('x-moz') === 'prefetch';
+
+  if (isPrefetch) {
+    return new NextResponse(null, { status: 204 });
+  }
+
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const state = searchParams.get('state');
@@ -25,8 +36,12 @@ export async function GET(request: NextRequest) {
     const exchangeResult = await exchangeAuthCode(code, state);
 
     if (!exchangeResult.success || !exchangeResult.token) {
+      console.error('[SSO Route Error] Canje fallido:', exchangeResult.error);
       return NextResponse.json(
-        { error: exchangeResult.error || 'Fallo al canjear el código de autorización' },
+        {
+          error: exchangeResult.error || 'Fallo al canjear el código de autorización',
+          detail: exchangeResult.detail || null,
+        },
         { status: exchangeResult.status || 401 }
       );
     }
