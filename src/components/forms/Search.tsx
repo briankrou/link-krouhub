@@ -7,7 +7,6 @@ interface SearchModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
 export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [query, setQuery] = useState("");
 
