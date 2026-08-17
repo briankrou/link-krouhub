@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, decodeJwt, JWTPayload, SignJWT } from 'jose';
+import { createRemoteJWKSet, jwtVerify, decodeJwt, JWTPayload, SignJWT, decodeProtectedHeader } from 'jose';
 import { addAuthLog } from '@/services/logService';
 
 export interface KrouHubUserPayload extends JWTPayload {
@@ -29,11 +29,13 @@ const isProduction =
   process.env.VERCEL_ENV === 'production';
 
 export function getKrouhubClientId(): string {
-  return process.env.KROUHUB_CLIENT_ID || 'enlaces';
+  const raw = process.env.KROUHUB_CLIENT_ID || 'enlaces';
+  return raw.trim().replace(/^["']|["']$/g, '');
 }
 
 export function getKrouhubClientSecret(): string {
-  return process.env.KROUHUB_CLIENT_SECRET || '';
+  const raw = process.env.KROUHUB_CLIENT_SECRET || '';
+  return raw.trim().replace(/^["']|["']$/g, '');
 }
 
 export function getKrouhubBaseUrl(): string {
@@ -48,7 +50,7 @@ export function getKrouhubBaseUrl(): string {
   } else {
     url = envUrl || 'http://localhost:3000';
   }
-  return url.replace(/\/+$/, '');
+  return url.trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '');
 }
 
 export function getJwksUrl(): string {
@@ -275,6 +277,8 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
 
   let decodedPayload: KrouHubUserPayload | null = null;
   try {
+    const header = decodeProtectedHeader(token);
+    stepsLogs.push(`🔍 JWT Header: alg=${header.alg}, kid=${header.kid}`);
     decodedPayload = decodeJwt(token) as KrouHubUserPayload;
     stepsLogs.push(`🔍 JWT descodificado. Claims: sub=${decodedPayload.sub}, email=${decodedPayload.email}, role=${decodedPayload.role}`);
 
