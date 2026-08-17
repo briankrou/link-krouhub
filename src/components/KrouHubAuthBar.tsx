@@ -85,12 +85,12 @@ export default function KrouHubAuthBar() {
         </Link>
 
         {isAuthenticated ? (
-          <button
-            onClick={logout}
-            className="px-3 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer"
+          <a
+            href="/logout"
+            className="px-3 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer flex items-center justify-center"
           >
             Cerrar Sesión
-          </button>
+          </a>
         ) : (
           <>
             <a

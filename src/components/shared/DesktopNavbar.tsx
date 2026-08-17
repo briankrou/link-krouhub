@@ -137,14 +137,14 @@ export default function DesktopNavbar({
                         >
                             <User size={18} />
                         </a>
-                        <button
-                            onClick={logout}
-                            className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-all cursor-pointer"
+                         <a
+                            href="/logout"
+                            className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-all cursor-pointer flex items-center justify-center"
                             aria-label="Cerrar Sesión"
                             title="Cerrar Sesión"
                         >
                             <LogOut size={18} />
-                        </button>
+                        </a>
                     </>
                 ) : (
                     <a

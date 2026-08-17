@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function Home() {
-  const { user, isAuthenticated, isLoading, error, token, loginMock, logout, krouhubUrl } =
+  const { user, isAuthenticated, isLoading, error, loginMock, logout, krouhubUrl } =
     useAuth();
 
   // Redirección automática si la sesión no está abierta
@@ -57,12 +57,12 @@ export default function Home() {
                 </div>
               </div>
 
-              <button
-                onClick={logout}
-                className="px-4 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-rose-500/20 transition self-end sm:self-center cursor-pointer"
+              <a
+                href="/logout"
+                className="px-4 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-rose-500/20 transition self-end sm:self-center cursor-pointer flex items-center justify-center"
               >
                 Cerrar Sesión
-              </button>
+              </a>
             </div>
 
             {/* Herramientas Permitidas */}
@@ -81,18 +81,6 @@ export default function Home() {
                 ))}
               </div>
             </div>
-
-            {/* Token Payload Inspector */}
-            {token && (
-              <div>
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Token JWT Activo:
-                </h4>
-                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 break-all select-all max-h-32 overflow-y-auto">
-                  {token}
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           <div className="py-6 text-center space-y-4">

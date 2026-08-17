@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthLogs, getAuthStats, clearAuthLogs } from '@/lib/authLogs';
-import { verifyKrouHubToken } from '@/lib/krouhubAuth';
+import { getAuthLogs, getAuthStats, clearAuthLogs } from '@/services/logService';
+import { verifyKrouHubToken } from '@/services/authService';
 
 export async function GET() {
   return NextResponse.json({

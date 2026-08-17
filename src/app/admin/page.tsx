@@ -1,30 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, FormEvent } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { runConfigDiagnosticsAction } from '@/actions/config.actions';
+import { getAuthLogsAction, clearAuthLogsAction, testTokenAction } from '@/actions/logs.actions';
+import { AuthLogEntry, AuthStats } from '@/services/logService';
 
-export interface AuthLogEntry {
-  id: string;
-  timestamp: string;
-  tokenSnippet: string;
-  method: 'ONLINE_KROUHUB' | 'JWKS_OFFLINE' | 'LOCAL_MOCK' | 'INVALID_FORMAT' | 'EXPIRED' | 'UNAUTHORIZED_TOOL';
-  valid: boolean;
-  userEmail?: string;
-  userRole?: string;
-  toolSlug?: string;
-  error?: string;
-  durationMs: number;
-  payload?: Record<string, any> | null;
-  logs: string[];
-}
-
-export interface AuthStats {
-  total: number;
-  validCount: number;
-  invalidCount: number;
-  mockCount: number;
-  avgDurationMs: number;
-}
+export type { AuthLogEntry, AuthStats };
 
 export default function AdminConsolePage() {
   const [logs, setLogs] = useState<AuthLogEntry[]>([]);
@@ -52,10 +34,9 @@ export default function AdminConsolePage() {
   const runConfigCheck = async (env: 'production' | 'local' = 'production') => {
     setIsCheckingConfig(true);
     try {
-      const res = await fetch(`/api/admin/config?env=${env}`);
-      if (res.ok) {
-        const data = await res.json();
-        setConfigResult(data);
+      const res = await runConfigDiagnosticsAction(env);
+      if (res.success && res.data) {
+        setConfigResult(res.data);
       }
     } catch (err) {
       console.error('Error al verificar configuración:', err);
@@ -66,11 +47,10 @@ export default function AdminConsolePage() {
 
   const fetchLogs = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/logs');
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data.logs || []);
-        setStats(data.stats || {});
+      const res = await getAuthLogsAction();
+      if (res.success && res.data) {
+        setLogs(res.data.logs || []);
+        setStats(res.data.stats || ({} as AuthStats));
       }
     } catch (err) {
       console.error('Error cargando logs:', err);
@@ -81,11 +61,10 @@ export default function AdminConsolePage() {
 
   const handleClearLogs = async () => {
     try {
-      const res = await fetch('/api/admin/logs', { method: 'DELETE' });
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data.logs || []);
-        setStats(data.stats || {});
+      const res = await clearAuthLogsAction();
+      if (res.success && res.data) {
+        setLogs(res.data.logs || []);
+        setStats(res.data.stats || ({} as AuthStats));
       }
     } catch (err) {
       console.error('Error limpiando logs:', err);
@@ -100,16 +79,14 @@ export default function AdminConsolePage() {
     setTestResult(null);
 
     try {
-      const res = await fetch('/api/admin/logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: token.trim() }),
-      });
-
-      const data = await res.json();
-      setTestResult(data.result);
-      if (data.logs) setLogs(data.logs);
-      if (data.stats) setStats(data.stats);
+      const res = await testTokenAction(token.trim());
+      if (res.data) {
+        if (res.data.testResult) setTestResult(res.data.testResult);
+        if (res.data.logs) setLogs(res.data.logs);
+        if (res.data.stats) setStats(res.data.stats);
+      } else if (res.error) {
+        setTestResult({ valid: false, error: res.error });
+      }
     } catch (err: any) {
       setTestResult({ valid: false, error: err?.message || 'Error de conexión' });
     } finally {

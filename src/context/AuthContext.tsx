@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { verifyTokenAction } from '@/actions/auth.actions';
 
 export interface User {
   id: string;
@@ -18,7 +19,6 @@ export interface LoginResult {
 
 export interface AuthContextType {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -30,7 +30,6 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  token: null,
   isAuthenticated: false,
   isLoading: true,
   error: null,
@@ -46,7 +45,6 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [krouhubUrl, setKrouhubUrl] = useState<string>('https://krouhub.com');
@@ -64,63 +62,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   /**
    * Cierre de sesión (Single Sign-Out):
-   * 1. Limpia token y cookie localmente.
-   * 2. Si globalLogout es true (por defecto), redirige al endpoint /logout-redirect de KrouHub.
+   * 1. Limpia el estado local.
+   * 2. Si globalLogout es true (por defecto), redirige al endpoint /logout de la herramienta,
+   *    el cual limpia las cookies httpOnly y redirige a KrouHub Central.
    */
   const logout = useCallback((globalLogout?: boolean | React.SyntheticEvent) => {
     const isGlobal = typeof globalLogout === 'boolean' ? globalLogout : true;
-    setUser(null);
-    setToken(null);
-    setError(null);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('krouhub_token');
-      document.cookie = 'krouhub_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      document.cookie = 'tool_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-
-      if (isGlobal) {
-        window.location.href = '/logout';
-      }
+    if (typeof window !== 'undefined' && isGlobal) {
+      window.location.href = '/logout';
+      return;
     }
+    setUser(null);
+    setError(null);
   }, []);
 
   /**
    * Revalida la sesión activa con el servidor
    */
-  const verifySessionToken = useCallback(async (activeToken?: string | null) => {
+  const verifySessionToken = useCallback(async () => {
     try {
-      const headers: Record<string, string> = {};
-      if (activeToken) {
-        headers['Authorization'] = `Bearer ${activeToken}`;
-      }
-
-      const res = await fetch('/api/auth/me', {
-        headers,
-      });
-
+      const res = await fetch('/api/auth/me');
       const data = await res.json();
 
       if (res.ok && data.authenticated && data.user) {
         setUser(data.user);
-        const resolvedToken = activeToken || data.token || (typeof window !== 'undefined' ? localStorage.getItem('krouhub_token') : null);
-        if (resolvedToken) {
-          setToken(resolvedToken);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('krouhub_token', resolvedToken);
-          }
-        }
       } else {
-        if (activeToken) {
-          console.log('[AuthContext] ⚠️ Sesión no válida o revocada en servidor central (error:', data.error, '). Cerrando sesión local...');
+        setUser(null);
+        if (data.error) {
+          console.warn('[AuthContext] ⚠️ Sesión no válida o revocada en servidor central:', data.error);
           setError(data.error || 'Sesión finalizada o revocada');
           logout(false);
-        } else {
-          setUser(null);
-          setToken(null);
         }
       }
     } catch (err) {
       console.error('[AuthContext] Error al revalidar sesión:', err);
-      setError('Error de comunicación con el servidor de autenticación');
     }
   }, [logout]);
 
@@ -130,93 +105,80 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setIsLoading(true);
       setError(null);
 
-      let activeToken: string | null = null;
-
-      if (typeof window !== 'undefined') {
-        const urlParams = new URLSearchParams(window.location.search);
-        const tokenParam = urlParams.get('token');
-
-        if (tokenParam) {
-          console.log('[AuthContext] 🔑 Token detectado en URL (?token=...):', `${tokenParam.substring(0, 25)}...`);
-          activeToken = tokenParam;
-          localStorage.setItem('krouhub_token', tokenParam);
-          document.cookie = `krouhub_token=${tokenParam}; path=/; max-age=${60 * 60 * 24 * 7}`;
-
-          const newUrl = window.location.pathname;
-          window.history.replaceState({}, document.title, newUrl);
-        } else {
-          activeToken = localStorage.getItem('krouhub_token');
-        }
-      }
-
-      // Revalidar sesión en vivo vía /api/auth/me para autenticar tanto por token como por cookies httpOnly (tool_session)
-      await verifySessionToken(activeToken);
+      // Revalidar sesión en vivo vía /api/auth/me que lee la cookie httpOnly
+      await verifySessionToken();
       setIsLoading(false);
     }
 
     initAuth();
   }, [verifySessionToken]);
 
-  // Escuchar eventos de cambio de foco (regreso a la pestaña) y almacenamiento local para sincronizar cierre de sesión
+  // Escuchar eventos de foco para sincronizar estado de sesión en tiempo real
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const handleFocus = () => {
-      const currentToken = localStorage.getItem('krouhub_token');
-      verifySessionToken(currentToken);
-    };
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'krouhub_token' && !e.newValue) {
-        console.log('[AuthContext] 📢 Evento storage: Token eliminado en otra pestaña.');
-        logout(false);
-      }
+      verifySessionToken();
     };
 
     window.addEventListener('focus', handleFocus);
     window.addEventListener('visibilitychange', handleFocus);
-    window.addEventListener('storage', handleStorageChange);
 
-    // Comprobación periódica cada 30 segundos
+    // Comprobación periódica cada 15 minutos (según spec de heartbeat recomendado)
     const interval = setInterval(() => {
-      const currentToken = localStorage.getItem('krouhub_token');
-      verifySessionToken(currentToken);
-    }, 30000);
+      verifySessionToken();
+    }, 15 * 60 * 1000);
 
     return () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('visibilitychange', handleFocus);
-      window.removeEventListener('storage', handleStorageChange);
       clearInterval(interval);
     };
-  }, [logout, verifySessionToken]);
+  }, [verifySessionToken]);
 
   const loginWithToken = async (newToken: string): Promise<LoginResult> => {
     setIsLoading(true);
     setError(null);
-    setToken(newToken);
-
-    localStorage.setItem('krouhub_token', newToken);
-    document.cookie = `krouhub_token=${newToken}; path=/; max-age=${60 * 60 * 24 * 7}`;
 
     try {
+      // Usar la Server Action segura para validar el token y registrar en logs.
+      // Adicionalmente pasaremos el token a /api/auth/me en POST para que guarde las cookies httpOnly.
       const res = await fetch('/api/auth/me', {
-        headers: {
-          Authorization: `Bearer ${newToken}`,
-        },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: newToken.trim() }),
       });
-
       const data = await res.json();
 
-      if (res.ok && data.authenticated && data.user) {
-        setUser(data.user);
+      if (res.ok && data.valid && data.payload) {
+        const payload = data.payload;
+        const loggedUser: User = {
+          id: payload.sub,
+          email: payload.email,
+          name: payload.name || payload.email,
+          role: payload.role,
+          allowedTools: payload.allowed_tools || (payload.tool ? [payload.tool] : []),
+        };
+
+        // Forzar seteo de cookies locales en el navegador vía una llamada temporal para pruebas si no viajan automáticas,
+        // pero dado que el servidor respondió con éxito en la verificación del token en la DB/JWKS,
+        // establecemos una cookie simulada de sesión o el mismo endpoint POST lo hace si re-configuramos.
+        // Espera, el endpoint POST /api/auth/me de arriba solo verificó y devolvió JSON.
+        // Modifiquemos POST /api/auth/me o escribamos aquí para setear cookies httpOnly del lado del cliente?
+        // No, el cliente no puede setear cookies httpOnly!
+        // Entonces, en POST /api/auth/me debemos setear las cookies en la respuesta!
+        // Excelente observación. Vamos a asegurarnos de que POST /api/auth/me también responda seteando las cookies.
+        
+        // Hacemos un reload o llamamos a verifySessionToken para recuperar la sesión
+        await verifySessionToken();
         setIsLoading(false);
-        return { success: true, user: data.user };
+        return { success: true, user: loggedUser };
       } else {
-        setError(data.error || 'Token inválido o revocado');
+        const err = data.error || 'Token inválido o revocado';
+        setError(err);
         logout(false);
         setIsLoading(false);
-        return { success: false, error: data.error || 'Token inválido o revocado' };
+        return { success: false, error: err };
       }
     } catch (err: any) {
       setError('Error al procesar el token');
@@ -235,7 +197,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     <AuthContext.Provider
       value={{
         user,
-        token,
         isAuthenticated: !!user,
         isLoading,
         error,

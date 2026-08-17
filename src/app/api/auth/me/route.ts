@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyKrouHubToken } from '@/lib/krouhubAuth';
+import { verifyKrouHubToken, getKrouhubClientId } from '@/services/authService';
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
             email: sessionObj.email,
             name: sessionObj.name || sessionObj.email,
             role: sessionObj.role || 'CLIENT',
-            allowedTools: ['enlaces', 'link'],
+            allowedTools: [getKrouhubClientId(), 'link'],
           },
         });
       }
@@ -61,7 +61,6 @@ export async function GET(request: NextRequest) {
       role: result.payload.role,
       allowedTools: result.payload.allowed_tools || (result.payload.tool ? [result.payload.tool] : []),
     },
-    token,
   };
 
   console.log('[API /api/auth/me] ✅ Usuario verificado exitosamente:', responseBody.user.email, `(${responseBody.user.role})`);
@@ -78,6 +77,39 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await verifyKrouHubToken(token);
+    
+    if (result.valid && result.payload) {
+      const isProd = process.env.NODE_ENV === 'production';
+      const clientId = getKrouhubClientId();
+      const sessionData = {
+        userId: result.payload.sub,
+        email: result.payload.email,
+        name: result.payload.name || result.payload.email,
+        role: result.payload.role || 'CLIENT',
+        clientId,
+      };
+
+      const response = NextResponse.json(result);
+      
+      response.cookies.set('tool_session', JSON.stringify(sessionData), {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: 'lax',
+        maxAge: 8 * 60 * 60,
+        path: '/',
+      });
+
+      response.cookies.set('krouhub_token', token, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: 'lax',
+        maxAge: 8 * 60 * 60,
+        path: '/',
+      });
+      
+      return response;
+    }
+    
     return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json({ valid: false, error: err?.message || 'Error del servidor' }, { status: 500 });

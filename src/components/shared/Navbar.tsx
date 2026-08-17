@@ -170,14 +170,14 @@ const Navbar: React.FC = () => {
                 >
                   <User size={22} />
                 </Link>
-                <button
-                  onClick={logout}
-                  className="p-2.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-all active:scale-90 cursor-pointer"
+                <a
+                  href="/logout"
+                  className="p-2.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-all active:scale-90 cursor-pointer flex items-center justify-center"
                   aria-label="Cerrar Sesión"
                   title="Cerrar Sesión"
                 >
                   <LogOut size={22} />
-                </button>
+                </a>
               </>
             ) : (
               <a

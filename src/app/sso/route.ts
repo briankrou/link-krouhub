@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
 import {
   exchangeAuthCode,
   getKrouhubBaseUrl,
   getKrouhubClientId,
-  getJwksUrl,
   verifyKrouHubToken,
-} from '@/lib/krouhubAuth';
+} from '@/services/authService';
 
 export async function GET(request: NextRequest) {
   // Prevenir que peticiones de prefetch/prerender del navegador consuman el código de un solo uso
@@ -48,34 +46,22 @@ export async function GET(request: NextRequest) {
 
     const { token, user: krouUser } = exchangeResult;
 
-    // 2. Verificación Criptográfica Asimétrica del JWT RS256 mediante JWKS
-    const baseUrl = getKrouhubBaseUrl();
-    const clientId = getKrouhubClientId();
-    const jwksUrl = getJwksUrl();
-
+    // 2. Verificación del JWT
     let verifiedPayload: any = null;
-
     try {
-      const JWKS = createRemoteJWKSet(new URL(jwksUrl), {
-        cooldownDuration: 10000,
-        cacheMaxAge: 3600000,
-      });
-
-      const { payload } = await jwtVerify(token, JWKS, {
-        algorithms: ['RS256'],
-      });
-
-      verifiedPayload = payload;
-    } catch (jwksErr: any) {
-      console.warn('[SSO Route] Advertencia al validar firma asimétrica directa:', jwksErr?.message);
-      try {
-        const { decodeJwt } = await import('jose');
-        verifiedPayload = decodeJwt(token);
-        console.log('[SSO Route] ℹ️ Token procesado exitosamente mediante canje directo Server-to-Server.');
-      } catch (decErr: any) {
-        console.error('[SSO Route] Error crítico al decodificar JWT:', decErr?.message);
-        verifiedPayload = krouUser || {};
+      const verification = await verifyKrouHubToken(token);
+      if (verification.valid && verification.payload) {
+        verifiedPayload = verification.payload;
+      } else {
+        // Si la verificación estricta JWKS no respondió o falló por red,
+        // pero el canje directo server-to-server fue exitoso y devolvió los datos,
+        // confiamos en krouUser (fuente de verdad verificada bajo Basic Auth).
+        console.warn('[SSO Route] Verificación JWKS falló o está offline. Utilizando datos verificados de KrouHub central.');
+        verifiedPayload = krouUser;
       }
+    } catch (verErr: any) {
+      console.warn('[SSO Route] Error al intentar verificar token, usando payload de exchange central:', verErr?.message);
+      verifiedPayload = krouUser;
     }
 
     // 3. Crear la Sesión Local Desacoplada de la Herramienta
@@ -86,8 +72,9 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(redirectTarget);
 
     const isProd = process.env.NODE_ENV === 'production';
+    const clientId = getKrouhubClientId();
     const sessionData = {
-      userId: verifiedPayload?.sub || krouUser?.id,
+      userId: verifiedPayload?.sub || verifiedPayload?.id || krouUser?.id,
       email: verifiedPayload?.email || krouUser?.email,
       name: verifiedPayload?.name || krouUser?.name,
       role: verifiedPayload?.role || krouUser?.role || 'CLIENT',
@@ -103,9 +90,9 @@ export async function GET(request: NextRequest) {
       path: '/',
     });
 
-    // Cookie de token JWT para el frontend y cliente API
+    // Cookie de token JWT para el heartbeat (ahora httpOnly por seguridad XSS)
     response.cookies.set('krouhub_token', token, {
-      httpOnly: false,
+      httpOnly: true,
       secure: isProd,
       sameSite: 'lax',
       maxAge: 8 * 60 * 60,

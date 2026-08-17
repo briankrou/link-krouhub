@@ -1,34 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyKrouHubToken } from '@/lib/krouhubAuth';
+import { verifyKrouHubToken } from '@/services/authService';
 
 export async function proxy(request: NextRequest) {
-  const { pathname, searchParams } = request.nextUrl;
+  const { pathname } = request.nextUrl;
 
-  let token = searchParams.get('token');
+  let token: string | null = null;
   const cookieToken = request.cookies.get('krouhub_token')?.value;
   const authHeader = request.headers.get('authorization');
 
-  if (!token && authHeader && authHeader.startsWith('Bearer ')) {
+  if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7);
-  }
-
-  if (!token && cookieToken) {
+  } else if (cookieToken) {
     token = cookieToken;
   }
 
-  const toolSessionCookie = request.cookies.get('tool_session')?.value;
-
   const response = NextResponse.next();
-
-  if (searchParams.has('token') && token) {
-    response.cookies.set('krouhub_token', token, {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    });
-  }
 
   const isApiProtected = pathname.startsWith('/api/protected');
   const isAuthMe = pathname === '/api/auth/me';
