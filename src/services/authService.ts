@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, decodeJwt, JWTPayload } from 'jose';
+import { createRemoteJWKSet, jwtVerify, decodeJwt, JWTPayload, SignJWT } from 'jose';
 import { addAuthLog } from '@/services/logService';
 
 export interface KrouHubUserPayload extends JWTPayload {
@@ -20,6 +20,7 @@ export interface VerificationResult {
   payload?: KrouHubUserPayload;
   error?: string;
   logs?: string[];
+  reason?: string;
 }
 
 const isProduction =
@@ -131,32 +132,46 @@ export async function validateSessionWithKrouhub(token: string) {
 
   const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
-  try {
-    const res = await fetch(`${baseUrl}/api/v1/tools/validate-session`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Basic ${authHeader}`,
-      },
-      body: JSON.stringify({ token }),
-      cache: 'no-store',
-    });
+  const maxRetries = 3;
+  let lastError: any = null;
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      return {
-        valid: false,
-        reason: data.reason || data.error || `SESSION_INVALID_HTTP_${res.status}`,
-        status: res.status,
-      };
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(`${baseUrl}/api/v1/tools/validate-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${authHeader}`,
+        },
+        body: JSON.stringify({ token }),
+        cache: 'no-store',
+      });
+
+      if (!res.ok) {
+        if (res.status < 500) {
+          const data = await res.json().catch(() => ({}));
+          return {
+            valid: false,
+            reason: data.reason || data.error || `SESSION_INVALID_HTTP_${res.status}`,
+            status: res.status,
+          };
+        }
+        throw new Error(`HTTP_SERVER_ERROR_${res.status}`);
+      }
+
+      const data = await res.json();
+      return { valid: data.valid !== false, reason: data.reason };
+    } catch (err: any) {
+      console.warn(`[KrouHub Auth Service] Intento ${attempt}/${maxRetries} fallido para validate-session:`, err?.message);
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+      }
     }
-
-    const data = await res.json();
-    return { valid: data.valid !== false, reason: data.reason };
-  } catch (err: any) {
-    console.error('[KrouHub Auth Service] Error en validateSessionWithKrouhub:', err?.message);
-    return { valid: false, reason: 'NETWORK_ERROR' };
   }
+
+  console.error('[KrouHub Auth Service] Todos los intentos de validate-session fallaron debido a errores de red o servidor.');
+  return { valid: false, reason: 'NETWORK_ERROR', error: lastError?.message || 'Unknown network error' };
 }
 
 /**
@@ -328,6 +343,8 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
 
   // 3. VERIFICACIÓN EN TIEMPO REAL VÍA HEARTBEAT CENTRAL KROUHUB (/api/v1/tools/validate-session)
   let isOnlineVerified = false;
+  let hasNetworkError = false;
+
   try {
     const currentBaseUrl = getKrouhubBaseUrl();
     stepsLogs.push(`🔄 Validando sesión con KrouHub central (${currentBaseUrl})...`);
@@ -339,9 +356,13 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
     } else {
       const reason = sessionCheck.reason || 'Estado inválido';
       stepsLogs.push(`⚠️ Heartbeat falló en KrouHub Central (${reason}). Continuando con validación criptográfica JWKS RS256...`);
+      if (sessionCheck.reason === 'NETWORK_ERROR') {
+        hasNetworkError = true;
+      }
     }
   } catch (apiErr: any) {
     stepsLogs.push(`⚠️ No se pudo verificar la sesión en vivo (${apiErr?.message || 'Error de red'}). Continuando con validación JWKS RS256...`);
+    hasNetworkError = true;
   }
 
   if (isOnlineVerified && decodedPayload) {
@@ -412,6 +433,9 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
       stepsLogs.push(`❌ ${errorMsg}`);
     } else {
       stepsLogs.push(`❌ Verificación JWKS falló: ${jwksErr?.message}`);
+      if (jwksErr?.message?.includes('fetch') || jwksErr?.message?.includes('TIMEOUT') || jwksErr?.code === 'ERR_JWKS_FETCH_FAILED') {
+        hasNetworkError = true;
+      }
     }
 
     if (jwksErr?.code === 'ERR_JWT_EXPIRED') {
@@ -430,24 +454,6 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
       });
       return { valid: false, error, logs: stepsLogs };
     }
-
-    // Fallback de emergencia: si la firma no coincide o falló la conexión por JWKS, pero el token NO está expirado,
-    // y lo hemos descodificado con éxito, hacemos un fallback seguro para no bloquear el inicio de sesión.
-    if (decodedPayload) {
-      stepsLogs.push(`⚠️ Fallback de emergencia activo: Firma JWKS inválida o error de conexión (${jwksErr?.message || jwksErr?.code}). Aceptando token descodificado.`);
-      addAuthLog({
-        tokenSnippet,
-        method: 'JWKS_OFFLINE',
-        valid: true,
-        userEmail: decodedPayload.email,
-        userRole: decodedPayload.role,
-        toolSlug: TOOL_SLUG,
-        durationMs: Date.now() - startTime,
-        payload: decodedPayload,
-        logs: stepsLogs,
-      });
-      return { valid: true, payload: decodedPayload, logs: stepsLogs };
-    }
   }
 
   const finalError = 'No se pudo verificar la firma o validez del token con KrouHub (Firma inválida o servicio no disponible).';
@@ -465,6 +471,61 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
     logs: stepsLogs,
   });
 
-  return { valid: false, error: finalError, logs: stepsLogs };
+  return {
+    valid: false,
+    error: finalError,
+    logs: stepsLogs,
+    reason: hasNetworkError ? 'NETWORK_ERROR' : undefined
+  };
+}
+
+/**
+ * Crea un token de sesión local firmado con HS256 utilizando COOKIE_SECRET.
+ */
+export async function signLocalSessionToken(payload: {
+  userId: string;
+  email: string;
+  name?: string;
+  role: string;
+  clientId: string;
+}): Promise<string> {
+  const secretStr = process.env.COOKIE_SECRET || 'default_cookie_secret_for_local_development_must_change_in_production';
+  const secret = new TextEncoder().encode(secretStr);
+  
+  return await new SignJWT({
+    userId: payload.userId,
+    email: payload.email,
+    name: payload.name,
+    role: payload.role,
+    clientId: payload.clientId,
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('8h')
+    .sign(secret);
+}
+
+/**
+ * Verifica un token de sesión local firmado con HS256 utilizando COOKIE_SECRET.
+ */
+export async function verifyLocalSessionToken(token: string) {
+  const secretStr = process.env.COOKIE_SECRET || 'default_cookie_secret_for_local_development_must_change_in_production';
+  const secret = new TextEncoder().encode(secretStr);
+
+  try {
+    const { payload } = await jwtVerify(token, secret, {
+      algorithms: ['HS256'],
+    });
+    return payload as {
+      userId: string;
+      email: string;
+      name?: string;
+      role: string;
+      clientId: string;
+    };
+  } catch (err: any) {
+    console.warn('[KrouHub Auth Service] Error al verificar cookie tool_session firmada:', err?.message);
+    return null;
+  }
 }
 

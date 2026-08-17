@@ -4,6 +4,7 @@ import {
   getKrouhubBaseUrl,
   getKrouhubClientId,
   verifyKrouHubToken,
+  signLocalSessionToken,
 } from '@/services/authService';
 
 export async function GET(request: NextRequest) {
@@ -46,25 +47,18 @@ export async function GET(request: NextRequest) {
 
     const { token, user: krouUser } = exchangeResult;
 
-    // 2. Verificación del JWT
-    let verifiedPayload: any = null;
-    try {
-      const verification = await verifyKrouHubToken(token);
-      if (verification.valid && verification.payload) {
-        verifiedPayload = verification.payload;
-      } else {
-        // Si la verificación estricta JWKS no respondió o falló por red,
-        // pero el canje directo server-to-server fue exitoso y devolvió los datos,
-        // confiamos en krouUser (fuente de verdad verificada bajo Basic Auth).
-        console.warn(`[SSO Route] Verificación JWKS/Heartbeat falló (Error: ${verification.error || 'Ninguno'}). Detalle de pasos:`, verification.logs);
-        verifiedPayload = krouUser;
-      }
-    } catch (verErr: any) {
-      console.warn('[SSO Route] Error al intentar verificar token, usando payload de exchange central:', verErr?.message);
-      verifiedPayload = krouUser;
+    // 2. Verificación del JWT (Sin bypass)
+    const verification = await verifyKrouHubToken(token);
+    if (!verification.valid || !verification.payload) {
+      console.error('[SSO Route Error] Verificación de token fallida:', verification.error);
+      return NextResponse.json(
+        { error: `Fallo al verificar la firma del token: ${verification.error}` },
+        { status: 401 }
+      );
     }
+    const verifiedPayload = verification.payload;
 
-    // 3. Crear la Sesión Local Desacoplada de la Herramienta
+    // 3. Crear la Sesión Local Desacoplada de la Herramienta (FIRMADA)
     const hostHeader = request.headers.get('host') || request.nextUrl.host;
     const protocol = request.headers.get('x-forwarded-proto') || (request.nextUrl.protocol ? request.nextUrl.protocol.replace(':', '') : 'http');
     const cleanHost = hostHeader.replace(/^0\.0\.0\.0/, 'localhost');
@@ -73,16 +67,17 @@ export async function GET(request: NextRequest) {
 
     const isProd = process.env.NODE_ENV === 'production';
     const clientId = getKrouhubClientId();
-    const sessionData = {
-      userId: verifiedPayload?.sub || verifiedPayload?.id || krouUser?.id,
-      email: verifiedPayload?.email || krouUser?.email,
-      name: verifiedPayload?.name || krouUser?.name,
-      role: verifiedPayload?.role || krouUser?.role || 'CLIENT',
+    
+    const sessionToken = await signLocalSessionToken({
+      userId: verifiedPayload.sub,
+      email: verifiedPayload.email,
+      name: verifiedPayload.name,
+      role: verifiedPayload.role || 'CLIENT',
       clientId,
-    };
+    });
 
     // Cookie desacoplada de la herramienta (8 horas TTL)
-    response.cookies.set('tool_session', JSON.stringify(sessionData), {
+    response.cookies.set('tool_session', sessionToken, {
       httpOnly: true,
       secure: isProd,
       sameSite: 'lax',
@@ -99,7 +94,7 @@ export async function GET(request: NextRequest) {
       path: '/',
     });
 
-    console.log(`[SSO Route] ✅ Sesión SSO iniciada correctamente para ${sessionData.email}`);
+    console.log(`[SSO Route] ✅ Sesión SSO iniciada correctamente para ${verifiedPayload.email}`);
     return response;
   } catch (err: any) {
     console.error('[SSO Route] Error crítico durante autenticación SSO:', err);
