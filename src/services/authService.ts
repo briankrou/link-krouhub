@@ -91,15 +91,19 @@ export async function exchangeAuthCode(code: string, state?: string | null) {
   const clientSecret = getKrouhubClientSecret();
   const baseUrl = getKrouhubBaseUrl();
 
-  const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-
   const res = await fetch(`${baseUrl}/api/v1/tools/exchange`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Basic ${authHeader}`,
+      'X-Tool-Client-Id': clientId,
+      'X-Tool-Secret': clientSecret,
     },
-    body: JSON.stringify({ code, state }),
+    body: JSON.stringify({
+      code,
+      state,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
     cache: 'no-store',
   });
 
@@ -132,8 +136,6 @@ export async function validateSessionWithKrouhub(token: string) {
   const clientSecret = getKrouhubClientSecret();
   const baseUrl = getKrouhubBaseUrl();
 
-  const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-
   const maxRetries = 3;
   let lastError: any = null;
 
@@ -143,9 +145,14 @@ export async function validateSessionWithKrouhub(token: string) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Basic ${authHeader}`,
+          'X-Tool-Client-Id': clientId,
+          'X-Tool-Secret': clientSecret,
         },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({
+          token,
+          client_id: clientId,
+          client_secret: clientSecret,
+        }),
         cache: 'no-store',
       });
 
