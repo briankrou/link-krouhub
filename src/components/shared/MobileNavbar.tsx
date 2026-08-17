@@ -8,6 +8,8 @@ import { useTheme } from "next-themes";
 import { ChevronDown, ArrowUpRight } from "lucide-react";
 import { NavLink } from "./Navbar";
 
+import { useAuth } from "@/context/AuthContext";
+
 interface MobileNavbarProps {
     isOpen: boolean;
     setIsOpen: (isOpen: boolean) => void;
@@ -44,6 +46,8 @@ export default function MobileNavbar({
     navLinks,
 }: MobileNavbarProps) {
     const pathname = usePathname();
+    const { krouhubUrl } = useAuth();
+    const krouhubBase = krouhubUrl || process.env.NEXT_PUBLIC_KROUHUB_BASE_URL || "http://localhost:3000";
     const [isServicesExpanded, setIsServicesExpanded] = useState<boolean>(false);
 
     // Bloquea el scroll del body y oculta widgets flotantes (WhatsApp, chat, etc.)
@@ -225,8 +229,8 @@ export default function MobileNavbar({
                             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/50">
                                 ¿Tienes un proyecto en mente?
                             </span>
-                            <Link
-                                href="/contactanos"
+                            <a
+                                href={`${krouhubBase}/contactanos`}
                                 onClick={() => setIsOpen(false)}
                                 className="w-full"
                             >
@@ -244,7 +248,7 @@ export default function MobileNavbar({
                                     Hablemos / Contáctanos
                                     <ArrowUpRight size={16} />
                                 </motion.div>
-                            </Link>
+                            </a>
                         </motion.div>
                     </div>
                 </motion.div>

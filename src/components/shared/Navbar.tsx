@@ -13,8 +13,8 @@ import DesktopNavbar from "./DesktopNavbar";
 import MobileNavbar from "./MobileNavbar";
 import SearchModal from "../forms/Search";
 
-import logoBlanco from "../../../public/KrouHub_Logo_blanco.png";
-import logoNegro from "../../../public/KrouHub_Logo_negro.png";
+const logoBlanco = "/KrouHub_Logo_blanco.png";
+const logoNegro = "/KrouHub_Logo_negro.png";
 
 export interface SubLink {
   name: string;
@@ -74,28 +74,30 @@ const Navbar: React.FC = () => {
     }
   }, [mounted, resolvedTheme, theme]);
 
+  const krouhubBaseUrl = krouhubUrl || process.env.NEXT_PUBLIC_KROUHUB_BASE_URL || "http://localhost:3000";
+
   const navLinks: NavLink[] = [
     { name: "Inicio", href: "/" },
-    { name: "Nosotros", href: "/nosotros" },
+    { name: "Nosotros", href: `${krouhubBaseUrl}/nosotros` },
     {
       name: "Servicios",
-      href: "/servicios",
+      href: `${krouhubBaseUrl}/servicios`,
       subLinks: [
         {
           name: "Diseño Web",
-          href: "/servicios/diseno-paginas-web",
+          href: `${krouhubBaseUrl}/servicios/diseno-paginas-web`,
           description: "Páginas profesionales, rápidas y optimizadas para busquedas en Google.",
           icon: Monitor,
         },
         {
           name: "Posicionamiento WEB",
-          href: "/servicios/posicionamiento-web",
+          href: `${krouhubBaseUrl}/servicios/posicionamiento-web`,
           description: "Escala puestos en buscadores y atrae más tráfico cualificado.",
           icon: Search,
         },
       ],
     },
-    { name: "Blog", href: "/blog" },
+    { name: "Blog", href: `${krouhubBaseUrl}/blog` },
   ];
 
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -180,8 +182,6 @@ const Navbar: React.FC = () => {
             ) : (
               <a
                 href={`${krouhubUrl}/login`}
-                target="_blank"
-                rel="noopener noreferrer"
                 className="p-2.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 transition-all active:scale-90 cursor-pointer flex items-center justify-center"
                 aria-label="Iniciar Sesión en KrouHub"
                 title="Iniciar Sesión en KrouHub"

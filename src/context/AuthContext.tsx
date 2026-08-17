@@ -57,7 +57,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (host.endsWith('krouhub.com') || host.endsWith('vercel.app') || process.env.NODE_ENV === 'production') {
         setKrouhubUrl('https://krouhub.com');
       } else {
-        setKrouhubUrl(process.env.NEXT_PUBLIC_KROUHUB_URL || 'http://localhost:3000');
+        setKrouhubUrl(process.env.NEXT_PUBLIC_KROUHUB_BASE_URL || 'http://localhost:3000');
       }
     }
   }, []);
@@ -75,38 +75,52 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('krouhub_token');
       document.cookie = 'krouhub_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      document.cookie = 'tool_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 
       if (isGlobal) {
-        window.location.href = `${krouhubUrl}/logout-redirect`;
+        window.location.href = '/logout';
       }
     }
-  }, [krouhubUrl]);
+  }, []);
 
   /**
    * Revalida la sesión activa con el servidor
    */
-  const verifySessionToken = useCallback(async (activeToken: string) => {
+  const verifySessionToken = useCallback(async (activeToken?: string | null) => {
     try {
+      const headers: Record<string, string> = {};
+      if (activeToken) {
+        headers['Authorization'] = `Bearer ${activeToken}`;
+      }
+
       const res = await fetch('/api/auth/me', {
-        headers: {
-          Authorization: `Bearer ${activeToken}`,
-        },
+        headers,
       });
 
       const data = await res.json();
 
       if (res.ok && data.authenticated && data.user) {
         setUser(data.user);
-        setToken(activeToken);
+        const resolvedToken = activeToken || data.token || (typeof window !== 'undefined' ? localStorage.getItem('krouhub_token') : null);
+        if (resolvedToken) {
+          setToken(resolvedToken);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('krouhub_token', resolvedToken);
+          }
+        }
       } else {
-        console.log('[AuthContext] ⚠️ Sesión no válida o revocada en servidor central (error:', data.error, '). Cerrando sesión local...');
-        setError(data.error || 'Sesión finalizada o revocada');
-        logout(false);
+        if (activeToken) {
+          console.log('[AuthContext] ⚠️ Sesión no válida o revocada en servidor central (error:', data.error, '). Cerrando sesión local...');
+          setError(data.error || 'Sesión finalizada o revocada');
+          logout(false);
+        } else {
+          setUser(null);
+          setToken(null);
+        }
       }
     } catch (err) {
       console.error('[AuthContext] Error al revalidar sesión:', err);
       setError('Error de comunicación con el servidor de autenticación');
-      logout(false);
     }
   }, [logout]);
 
@@ -135,11 +149,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       }
 
-      if (!activeToken) {
-        setIsLoading(false);
-        return;
-      }
-
+      // Revalidar sesión en vivo vía /api/auth/me para autenticar tanto por token como por cookies httpOnly (tool_session)
       await verifySessionToken(activeToken);
       setIsLoading(false);
     }
@@ -153,12 +163,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const handleFocus = () => {
       const currentToken = localStorage.getItem('krouhub_token');
-      if (!currentToken && user) {
-        console.log('[AuthContext] 📢 Token no encontrado al cambiar de ventana. Cerrando sesión local...');
-        logout(false);
-      } else if (currentToken) {
-        verifySessionToken(currentToken);
-      }
+      verifySessionToken(currentToken);
     };
 
     const handleStorageChange = (e: StorageEvent) => {
@@ -175,11 +180,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Comprobación periódica cada 30 segundos
     const interval = setInterval(() => {
       const currentToken = localStorage.getItem('krouhub_token');
-      if (currentToken) {
-        verifySessionToken(currentToken);
-      } else if (user) {
-        logout(false);
-      }
+      verifySessionToken(currentToken);
     }, 30000);
 
     return () => {
@@ -188,7 +189,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(interval);
     };
-  }, [user, logout, verifySessionToken]);
+  }, [logout, verifySessionToken]);
 
   const loginWithToken = async (newToken: string): Promise<LoginResult> => {
     setIsLoading(true);

@@ -4,14 +4,14 @@ interface DiagnosticResult {
   environment: 'production' | 'local';
   targetKrouhubUrl: string;
   targetJwksUrl: string;
-  targetVerifyUrl: string;
-  toolSlug: string;
+  targetExchangeUrl: string;
+  targetValidateSessionUrl: string;
+  clientId: string;
+  hasClientSecret: boolean;
   mockEnabled: boolean;
   securityStatus: {
     mockDisabledInProd: boolean;
-    hasJwksKeyId: boolean;
-    hasValidPublicKey: boolean;
-    hasValidPrivateKey: boolean;
+    hasClientSecret: boolean;
   };
   jwksRemoteTest: {
     reachable: boolean;
@@ -22,10 +22,14 @@ interface DiagnosticResult {
     use?: string;
     error?: string;
   };
-  verifyRemoteTest: {
+  exchangeRemoteTest: {
     reachable: boolean;
     statusCode?: number;
-    hasCors?: boolean;
+    error?: string;
+  };
+  validateSessionRemoteTest: {
+    reachable: boolean;
+    statusCode?: number;
     error?: string;
   };
   summary: {
@@ -42,10 +46,12 @@ export async function GET(request: NextRequest) {
   const isProductionTarget = targetEnv === 'production' || targetEnv === 'prod';
   const targetKrouhubUrl = isProductionTarget
     ? 'https://krouhub.com'
-    : (process.env.NEXT_PUBLIC_KROUHUB_URL || 'http://localhost:3000');
+    : (process.env.KROUHUB_BASE_URL || 'http://localhost:3000');
   const targetJwksUrl = `${targetKrouhubUrl}/.well-known/jwks.json`;
-  const targetVerifyUrl = `${targetKrouhubUrl}/api/v1/tools/verify`;
-  const toolSlug = process.env.TOOL_SLUG || 'link';
+  const targetExchangeUrl = `${targetKrouhubUrl}/api/v1/tools/exchange`;
+  const targetValidateSessionUrl = `${targetKrouhubUrl}/api/v1/tools/validate-session`;
+  const clientId = process.env.KROUHUB_CLIENT_ID || 'enlaces';
+  const hasClientSecret = !!process.env.KROUHUB_CLIENT_SECRET;
   const mockEnabled = process.env.ENABLE_LOCAL_AUTH_MOCK === 'true';
 
   let passed = 0;
@@ -56,32 +62,7 @@ export async function GET(request: NextRequest) {
   const mockDisabledInProd = !isProductionTarget || !mockEnabled;
   if (!mockDisabledInProd) errors++; else passed++;
 
-  const hasJwksKeyId = !!process.env.JWKS_KEY_ID;
-  if (hasJwksKeyId) passed++; else warnings++;
-
-  let hasValidPublicKey = false;
-  if (process.env.JWKS_PUBLIC_KEY) {
-    try {
-      const decoded = Buffer.from(process.env.JWKS_PUBLIC_KEY, 'base64').toString('utf8');
-      hasValidPublicKey = decoded.includes('BEGIN PUBLIC KEY');
-      if (hasValidPublicKey) passed++; else warnings++;
-    } catch {
-      errors++;
-    }
-  } else {
-    warnings++;
-  }
-
-  let hasValidPrivateKey = false;
-  if (process.env.JWKS_PRIVATE_KEY) {
-    try {
-      const decoded = Buffer.from(process.env.JWKS_PRIVATE_KEY, 'base64').toString('utf8');
-      hasValidPrivateKey = decoded.includes('BEGIN PRIVATE KEY');
-      if (hasValidPrivateKey) passed++;
-    } catch {
-      errors++;
-    }
-  }
+  if (hasClientSecret) passed++; else errors++;
 
   // 2. Test JWKS Remote HTTP Reachability
   const jwksTest: DiagnosticResult['jwksRemoteTest'] = { reachable: false };
@@ -112,44 +93,74 @@ export async function GET(request: NextRequest) {
     jwksTest.error = err?.message || 'Error de conexión HTTP';
   }
 
-  // 3. Test Verify Remote HTTP Reachability
-  const verifyTest: DiagnosticResult['verifyRemoteTest'] = { reachable: false };
+  // 3. Test Exchange Remote Endpoint
+  const exchangeTest: DiagnosticResult['exchangeRemoteTest'] = { reachable: false };
   try {
-    const res = await fetch(targetVerifyUrl, {
+    const authHeader = Buffer.from(`${clientId}:${process.env.KROUHUB_CLIENT_SECRET || ''}`).toString('base64');
+    const res = await fetch(targetExchangeUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: 'config_health_check_ping' }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${authHeader}`,
+      },
+      body: JSON.stringify({ code: 'health_check_ping' }),
       next: { revalidate: 0 },
     });
-    verifyTest.statusCode = res.status;
-    verifyTest.hasCors = !!res.headers.get('access-control-allow-origin');
-    if (res.status === 200 || res.status === 401 || res.status === 400) {
-      verifyTest.reachable = true;
+    exchangeTest.statusCode = res.status;
+    if (res.status === 400 || res.status === 401 || res.status === 200) {
+      exchangeTest.reachable = true;
       passed++;
     } else {
       errors++;
-      verifyTest.error = `HTTP ${res.status}`;
+      exchangeTest.error = `HTTP ${res.status}`;
     }
   } catch (err: any) {
     errors++;
-    verifyTest.error = err?.message || 'Error de conexión HTTP';
+    exchangeTest.error = err?.message || 'Error de conexión HTTP';
+  }
+
+  // 4. Test Validate Session Remote Endpoint
+  const validateSessionTest: DiagnosticResult['validateSessionRemoteTest'] = { reachable: false };
+  try {
+    const authHeader = Buffer.from(`${clientId}:${process.env.KROUHUB_CLIENT_SECRET || ''}`).toString('base64');
+    const res = await fetch(targetValidateSessionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${authHeader}`,
+      },
+      body: JSON.stringify({ token: 'health_check_ping' }),
+      next: { revalidate: 0 },
+    });
+    validateSessionTest.statusCode = res.status;
+    if (res.status === 401 || res.status === 400 || res.status === 200) {
+      validateSessionTest.reachable = true;
+      passed++;
+    } else {
+      errors++;
+      validateSessionTest.error = `HTTP ${res.status}`;
+    }
+  } catch (err: any) {
+    errors++;
+    validateSessionTest.error = err?.message || 'Error de conexión HTTP';
   }
 
   const result: DiagnosticResult = {
     environment: isProductionTarget ? 'production' : 'local',
     targetKrouhubUrl,
     targetJwksUrl,
-    targetVerifyUrl,
-    toolSlug,
+    targetExchangeUrl,
+    targetValidateSessionUrl,
+    clientId,
+    hasClientSecret,
     mockEnabled,
     securityStatus: {
       mockDisabledInProd,
-      hasJwksKeyId,
-      hasValidPublicKey,
-      hasValidPrivateKey,
+      hasClientSecret,
     },
     jwksRemoteTest: jwksTest,
-    verifyRemoteTest: verifyTest,
+    exchangeRemoteTest: exchangeTest,
+    validateSessionRemoteTest: validateSessionTest,
     summary: {
       passed,
       warnings,

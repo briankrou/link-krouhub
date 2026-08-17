@@ -7,25 +7,19 @@ export default function Home() {
   const { user, isAuthenticated, isLoading, error, token, loginMock, logout, krouhubUrl } =
     useAuth();
 
+  // Redirección automática si la sesión no está abierta
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && typeof window !== 'undefined') {
+      const loginUrl = `${krouhubUrl}/login?redirect=${encodeURIComponent(window.location.href)}`;
+      console.log('[Home] 🔒 Sesión no detectada. Redirigiendo automáticamente a KrouHub Central:', loginUrl);
+      window.location.href = loginUrl;
+    }
+  }, [isLoading, isAuthenticated, krouhubUrl]);
+
 
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 max-w-5xl mx-auto w-full">
-      {/* Header Banner */}
-      <div className="w-full text-center mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold mb-4">
-          <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
-          KrouHub Auth System (JWT + JWKS RS256)
-        </div>
-        <h1 className="text-3xl md:text-5xl font-extrabold text-white tracking-tight">
-          KrouHub <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">Link</span>
-        </h1>
-        <p className="mt-3 text-slate-400 text-sm md:text-base max-w-2xl mx-auto">
-          Sistema de acortamiento de enlaces y generador de UTMs para agencias de desarrollo web, autorizado directamente desde <strong className="text-slate-200">krouhub.com</strong>.
-        </p>
-      </div>
-
-      {/* Estado de la Sesión */}
       <div className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl p-6 md:p-8 backdrop-blur-xl shadow-xl">
         <h2 className="text-lg font-bold text-slate-200 mb-4 flex items-center justify-between">
           <span className="flex items-center gap-2">
@@ -125,8 +119,6 @@ export default function Home() {
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
               <a
                 href={`${krouhubUrl}/login?redirect=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
-                target="_blank"
-                rel="noopener noreferrer"
                 className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2"
               >
                 <span>Iniciar Sesión en KrouHub.com</span>
@@ -146,32 +138,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* Características del Sistema */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mt-8">
-        <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4">
-          <div className="text-xl mb-2">🔑</div>
-          <h3 className="text-sm font-bold text-slate-200">Verificación Asimétrica RS256</h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Los tokens se firman con RSA-2048 y se verifican localmente con la clave pública JWKS de KrouHub.
-          </p>
-        </div>
-
-        <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4">
-          <div className="text-xl mb-2">🌐</div>
-          <h3 className="text-sm font-bold text-slate-200">Compatibilidad Local & Prod</h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Funciona dinámicamente tanto con `localhost:3001` como en producción con `krouhub.com`.
-          </p>
-        </div>
-
-        <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4">
-          <div className="text-xl mb-2">🛡️</div>
-          <h3 className="text-sm font-bold text-slate-200">Next.js Proxy / Middleware</h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Protección de rutas de API y vistas interceptando cabeceras `Authorization: Bearer` y cookies.
-          </p>
-        </div>
-      </div>
     </main>
   );
 }

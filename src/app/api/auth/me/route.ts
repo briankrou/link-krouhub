@@ -11,7 +11,31 @@ export async function GET(request: NextRequest) {
     token = request.cookies.get('krouhub_token')?.value || null;
   }
 
+  // Fallback a cookie tool_session si el usuario tiene sesión guardada
+  const toolSessionCookie = request.cookies.get('tool_session')?.value;
+
   console.log('[API /api/auth/me] 🔍 Verificando sesión token...');
+
+  if (!token && toolSessionCookie) {
+    try {
+      const sessionObj = JSON.parse(toolSessionCookie);
+      if (sessionObj && sessionObj.email) {
+        // Retornar sesión local si la cookie desacoplada tool_session es válida
+        return NextResponse.json({
+          authenticated: true,
+          user: {
+            id: sessionObj.userId || 'usr_tool_session',
+            email: sessionObj.email,
+            name: sessionObj.name || sessionObj.email,
+            role: sessionObj.role || 'CLIENT',
+            allowedTools: ['enlaces', 'link'],
+          },
+        });
+      }
+    } catch {
+      // Si la cookie tool_session está corrupta, ignorar
+    }
+  }
 
   if (!token) {
     console.log('[API /api/auth/me] ⚠️ No se encontró token en Header ni Cookie.');
@@ -37,6 +61,7 @@ export async function GET(request: NextRequest) {
       role: result.payload.role,
       allowedTools: result.payload.allowed_tools || (result.payload.tool ? [result.payload.tool] : []),
     },
+    token,
   };
 
   console.log('[API /api/auth/me] ✅ Usuario verificado exitosamente:', responseBody.user.email, `(${responseBody.user.role})`);

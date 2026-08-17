@@ -16,6 +16,8 @@ export async function proxy(request: NextRequest) {
     token = cookieToken;
   }
 
+  const toolSessionCookie = request.cookies.get('tool_session')?.value;
+
   const response = NextResponse.next();
 
   if (searchParams.has('token') && token) {

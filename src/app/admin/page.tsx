@@ -320,20 +320,11 @@ export default function AdminConsolePage() {
                     </div>
 
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400">JWKS_KEY_ID:</span>
-                      {configResult.securityStatus.hasJwksKeyId ? (
+                      <span className="text-slate-400">KROUHUB_CLIENT_SECRET:</span>
+                      {configResult.securityStatus.hasClientSecret ? (
                         <span className="text-emerald-400 font-bold">✓ Configurado</span>
                       ) : (
-                        <span className="text-amber-400 font-bold">⚠️ No definido</span>
-                      )}
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Clave Pública SPKI Base64:</span>
-                      {configResult.securityStatus.hasValidPublicKey ? (
-                        <span className="text-emerald-400 font-bold">✓ RSA Válida</span>
-                      ) : (
-                        <span className="text-amber-400 font-bold">⚠️ No detectada / formato</span>
+                        <span className="text-rose-400 font-bold">❌ Faltante</span>
                       )}
                     </div>
                   </div>

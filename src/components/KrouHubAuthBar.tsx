@@ -95,8 +95,6 @@ export default function KrouHubAuthBar() {
           <>
             <a
               href={`${krouhubUrl}/login`}
-              target="_blank"
-              rel="noopener noreferrer"
               className="px-3 py-1 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition flex items-center gap-1"
             >
               <span>Iniciar Sesión en KrouHub</span>

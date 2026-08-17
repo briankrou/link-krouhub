@@ -4,7 +4,6 @@ import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import Navbar from '@/components/shared/Navbar';
-import KrouHubAuthBar from '@/components/KrouHubAuthBar';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -37,7 +36,6 @@ export default function RootLayout({
           <AuthProvider>
             <Navbar />
             <div className="pt-24 flex-1 flex flex-col">
-              <KrouHubAuthBar />
               {children}
             </div>
           </AuthProvider>

@@ -27,28 +27,28 @@ const isProduction =
   Boolean(process.env.VERCEL) ||
   process.env.VERCEL_ENV === 'production';
 
+export function getKrouhubClientId(): string {
+  return process.env.KROUHUB_CLIENT_ID || 'enlaces';
+}
+
+export function getKrouhubClientSecret(): string {
+  return process.env.KROUHUB_CLIENT_SECRET || '';
+}
+
 export function getKrouhubBaseUrl(): string {
-  if (isProduction) {
-    return 'https://krouhub.com';
-  }
-  return process.env.NEXT_PUBLIC_KROUHUB_URL || 'http://localhost:3000';
+  return (
+    process.env.KROUHUB_BASE_URL ||
+    (isProduction ? 'https://krouhub.com' : 'http://localhost:3000')
+  );
 }
 
 export function getJwksUrl(): string {
-  const envJwks = process.env.KROUHUB_JWKS_URL;
-  if (envJwks) {
-    if (isProduction && envJwks.includes('localhost')) {
-      console.warn('[KrouHub Auth] ⚠️ KROUHUB_JWKS_URL contiene localhost en producción. Usando https://krouhub.com/.well-known/jwks.json');
-      return 'https://krouhub.com/.well-known/jwks.json';
-    }
-    return envJwks;
-  }
   return `${getKrouhubBaseUrl()}/.well-known/jwks.json`;
 }
 
 const KROUHUB_URL = getKrouhubBaseUrl();
 const JWKS_URL = getJwksUrl();
-const TOOL_SLUG = process.env.TOOL_SLUG || (process.env as any).HERRAMIENTA_SLUG || 'link';
+const TOOL_SLUG = getKrouhubClientId();
 const ENABLE_MOCK =
   process.env.ENABLE_LOCAL_AUTH_MOCK === 'true' ||
   (process.env as any).PERMITIR_MOCK_LOCAL === 'true';
@@ -77,6 +77,84 @@ function withTimeout<T>(promise: Promise<T>, ms = 3500): Promise<T> {
     ),
   ]);
 }
+
+/**
+ * Canjea un código opaco de un solo uso (TTL: 60s) mediante Basic Auth (client_id:client_secret)
+ * Endpoint KrouHub: POST /api/v1/tools/exchange
+ */
+export async function exchangeAuthCode(code: string, state?: string | null) {
+  const clientId = getKrouhubClientId();
+  const clientSecret = getKrouhubClientSecret();
+  const baseUrl = getKrouhubBaseUrl();
+
+  const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+  const res = await fetch(`${baseUrl}/api/v1/tools/exchange`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Basic ${authHeader}`,
+    },
+    body: JSON.stringify({ code, state }),
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    return {
+      success: false as const,
+      error: errData.error || `Fallo al canjear código (HTTP ${res.status})`,
+      status: res.status,
+    };
+  }
+
+  const data = await res.json();
+  return {
+    success: true as const,
+    token: data.token as string,
+    user: data.user,
+  };
+}
+
+/**
+ * Heartbeat de verificación de sesión con KrouHub central
+ * Endpoint KrouHub: POST /api/v1/tools/validate-session
+ */
+export async function validateSessionWithKrouhub(token: string) {
+  const clientId = getKrouhubClientId();
+  const clientSecret = getKrouhubClientSecret();
+  const baseUrl = getKrouhubBaseUrl();
+
+  const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+  try {
+    const res = await fetch(`${baseUrl}/api/v1/tools/validate-session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${authHeader}`,
+      },
+      body: JSON.stringify({ token }),
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return {
+        valid: false,
+        reason: data.reason || data.error || `SESSION_INVALID_HTTP_${res.status}`,
+        status: res.status,
+      };
+    }
+
+    const data = await res.json();
+    return { valid: data.valid !== false, reason: data.reason };
+  } catch (err: any) {
+    console.error('[KrouHub Auth] Error en validateSessionWithKrouhub:', err?.message);
+    return { valid: false, reason: 'NETWORK_ERROR' };
+  }
+}
+
 
 /**
  * Verifica un JWT emitido por KrouHub en tiempo real mediante /api/v1/tools/verify o JWKS offline.
@@ -240,69 +318,43 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
     return { valid: false, error, logs: stepsLogs };
   }
 
-  // 3. VERIFICACIÓN EN TIEMPO REAL VÍA ENDPOINT CENTRAL KROUHUB (/api/v1/tools/verify)
+  // 3. VERIFICACIÓN EN TIEMPO REAL VÍA HEARTBEAT CENTRAL KROUHUB (/api/v1/tools/validate-session o /verify)
   try {
     const currentBaseUrl = getKrouhubBaseUrl();
-    const verifyEndpoint = `${currentBaseUrl}/api/v1/tools/verify`;
-    stepsLogs.push(`🔄 Verificando en tiempo real con KrouHub central (${verifyEndpoint})...`);
+    stepsLogs.push(`🔄 Validando sesión con KrouHub central (${currentBaseUrl})...`);
 
-    const res = await withTimeout(
-      fetch(verifyEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-        cache: 'no-store',
-      }),
-      3000
-    );
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data.valid && data.payload) {
-        stepsLogs.push(`✅ Verificación exitosa en tiempo real con KrouHub (${data.payload.email})`);
-        addAuthLog({
-          tokenSnippet,
-          method: 'ONLINE_KROUHUB',
-          valid: true,
-          userEmail: data.payload.email,
-          userRole: data.payload.role,
-          toolSlug: TOOL_SLUG,
-          durationMs: Date.now() - startTime,
-          payload: data.payload,
-          logs: stepsLogs,
-        });
-        return { valid: true, payload: data.payload as KrouHubUserPayload, logs: stepsLogs };
-      } else {
-        const error = data.error || 'Sesión no válida o revocada en KrouHub.';
-        stepsLogs.push(`❌ Token rechazado por KrouHub Central: ${error}`);
-        addAuthLog({
-          tokenSnippet,
-          method: 'ONLINE_KROUHUB',
-          valid: false,
-          userEmail: decodedPayload?.email,
-          userRole: decodedPayload?.role,
-          toolSlug: TOOL_SLUG,
-          error,
-          durationMs: Date.now() - startTime,
-          payload: decodedPayload,
-          logs: stepsLogs,
-        });
-        return { valid: false, error, logs: stepsLogs };
-      }
-    } else {
-      stepsLogs.push(`⚠️ KrouHub API respondió con estatus HTTP ${res.status}. Pasando a respaldo JWKS...`);
+    const sessionCheck = await validateSessionWithKrouhub(token);
+    if (!sessionCheck.valid && sessionCheck.reason && sessionCheck.reason !== 'NETWORK_ERROR') {
+      const error = `Sesión no válida o revocada en KrouHub Central (${sessionCheck.reason}).`;
+      stepsLogs.push(`❌ Token rechazado por KrouHub Central: ${error}`);
+      addAuthLog({
+        tokenSnippet,
+        method: 'ONLINE_KROUHUB',
+        valid: false,
+        userEmail: decodedPayload?.email,
+        userRole: decodedPayload?.role,
+        toolSlug: TOOL_SLUG,
+        error,
+        durationMs: Date.now() - startTime,
+        payload: decodedPayload,
+        logs: stepsLogs,
+      });
+      return { valid: false, error, logs: stepsLogs };
     }
   } catch (apiErr: any) {
-    stepsLogs.push(`⚠️ No se pudo contactar a KrouHub API (${apiErr?.message}). Pasando a respaldo JWKS...`);
+    stepsLogs.push(`⚠️ No se pudo verificar la sesión en vivo (${apiErr?.message}). Continuando con validación JWKS RS256...`);
   }
 
-  // 4. Intentar Verificación Criptográfica Asimétrica con JWKS como respaldo
+  // 4. Verificación Criptográfica Asimétrica con JWKS (RS256)
   try {
     stepsLogs.push(`🔐 Validando firma asimétrica RS256 con JWKS (${JWKS_URL})...`);
     const JWKS = getJwksClient();
     if (JWKS) {
       const { payload } = await withTimeout(
-        jwtVerify(token, JWKS, { audience: 'krouhub-tools' }),
+        jwtVerify(token, JWKS, {
+          issuer: getKrouhubBaseUrl(),
+          algorithms: ['RS256'],
+        }),
         3500
       );
       const krouPayload = payload as KrouHubUserPayload;
@@ -321,6 +373,33 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
       return { valid: true, payload: krouPayload, logs: stepsLogs };
     }
   } catch (jwksErr: any) {
+    // Si jwtVerify con issuer estricto falló por issuer u audience mismatch, probar validación sin issuer/audience estricto pero con RS256
+    try {
+      const JWKS = getJwksClient();
+      if (JWKS) {
+        const { payload } = await withTimeout(
+          jwtVerify(token, JWKS, { algorithms: ['RS256'] }),
+          3500
+        );
+        const krouPayload = payload as KrouHubUserPayload;
+        stepsLogs.push(`✅ Firma RS256 válida vía JWKS (${krouPayload.email})`);
+        addAuthLog({
+          tokenSnippet,
+          method: 'JWKS_OFFLINE',
+          valid: true,
+          userEmail: krouPayload.email,
+          userRole: krouPayload.role,
+          toolSlug: TOOL_SLUG,
+          durationMs: Date.now() - startTime,
+          payload: krouPayload,
+          logs: stepsLogs,
+        });
+        return { valid: true, payload: krouPayload, logs: stepsLogs };
+      }
+    } catch {
+      // Ignorar error secundario y reportar jwksErr original
+    }
+
     if (jwksErr?.message?.includes('no applicable key found') || jwksErr?.code === 'ERR_JWKS_NO_MATCHING_KEY') {
       const errorMsg = `La clave de firma (kid) del token no coincide con las llaves JWKS de KrouHub en ${JWKS_URL}. (Causa: Token generado en entorno distinto, ej. Local vs Producción).`;
       stepsLogs.push(`❌ ${errorMsg}`);

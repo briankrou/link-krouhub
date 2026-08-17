@@ -22,6 +22,7 @@ export default function DesktopNavbar({
     setIsSearchOpen,
 }: DesktopNavbarProps) {
     const { isAuthenticated, logout, krouhubUrl } = useAuth();
+    const krouhubBase = krouhubUrl || process.env.NEXT_PUBLIC_KROUHUB_BASE_URL || "http://localhost:3000";
 
     return (
         <div className="hidden md:flex space-x-2 items-center">
@@ -106,7 +107,7 @@ export default function DesktopNavbar({
             </button>
 
             <motion.a
-                href="/contactanos"
+                href={`${krouhubBase}/contactanos`}
                 whileHover={{
                     scale: 1.03,
                     boxShadow: "0 0 25px rgba(6, 182, 212, 0.4)",
@@ -120,22 +121,22 @@ export default function DesktopNavbar({
                 <ThemeToggle />
                 {isAuthenticated ? (
                     <>
-                        <Link
-                            href="/herramientas"
+                        <a
+                            href={`${krouhubBase}/herramientas`}
                             className="p-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 transition-all flex items-center cursor-pointer"
                             aria-label="Herramientas Exclusivas"
                             title="Herramientas Exclusivas"
                         >
                             <Wrench size={18} />
-                        </Link>
-                        <Link
-                            href="/perfil"
+                        </a>
+                        <a
+                            href={`${krouhubBase}/perfil`}
                             className="p-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-500 transition-all flex items-center cursor-pointer"
                             aria-label="Perfil de usuario"
                             title="Perfil"
                         >
                             <User size={18} />
-                        </Link>
+                        </a>
                         <button
                             onClick={logout}
                             className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-all cursor-pointer"
@@ -147,9 +148,7 @@ export default function DesktopNavbar({
                     </>
                 ) : (
                     <a
-                        href={`${krouhubUrl}/login`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        href={`${krouhubBase}/login`}
                         className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 transition-all flex items-center cursor-pointer"
                         aria-label="Iniciar Sesión en KrouHub"
                         title="Iniciar Sesión en KrouHub"
