@@ -366,9 +366,25 @@ export async function verifyKrouHubToken(token: string | null | undefined): Prom
       stepsLogs.push(`✅ Sesión confirmada activa por KrouHub Central.`);
     } else {
       const reason = sessionCheck.reason || 'Estado inválido';
-      stepsLogs.push(`⚠️ Heartbeat falló en KrouHub Central (${reason}). Continuando con validación criptográfica JWKS RS256...`);
       if (sessionCheck.reason === 'NETWORK_ERROR') {
         hasNetworkError = true;
+        stepsLogs.push(`⚠️ No se pudo verificar la sesión por error de red. Continuando con validación criptográfica JWKS RS256...`);
+      } else {
+        const errorMsg = `Sesión finalizada o revocada por KrouHub Central (${reason}).`;
+        stepsLogs.push(`❌ ${errorMsg}`);
+        addAuthLog({
+          tokenSnippet,
+          method: 'ONLINE_KROUHUB',
+          valid: false,
+          userEmail: decodedPayload?.email,
+          userRole: decodedPayload?.role,
+          toolSlug: TOOL_SLUG,
+          error: errorMsg,
+          durationMs: Date.now() - startTime,
+          payload: decodedPayload || undefined,
+          logs: stepsLogs,
+        });
+        return { valid: false, error: errorMsg, reason, logs: stepsLogs };
       }
     }
   } catch (apiErr: any) {
